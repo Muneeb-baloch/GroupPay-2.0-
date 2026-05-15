@@ -1,0 +1,12 @@
+# Icons Folder
+
+Place your custom icons here:
+- Navigation icons
+- Button icons  
+- Status indicators
+- UI elements
+
+Example usage:
+```javascript
+import CustomIcon from '../assets/icons/custom-icon.png';
+```

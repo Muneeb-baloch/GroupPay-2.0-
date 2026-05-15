@@ -1,0 +1,11 @@
+# Logos Folder
+
+Place your brand logos here:
+- GroupPay logo variations
+- Partner logos
+- Brand elements
+
+Example usage:
+```javascript
+import GroupPayLogo from '../assets/logos/grouppay-logo.png';
+```

@@ -22,7 +22,7 @@ const DepositsScreen = ({ route }) => {
   const [loading, setLoading] = useState(false);
   const [selectedTab, setSelectedTab] = useState('history');
 
-  // Sample deposit data with more realistic structure
+  // Sample deposit data with more realistic structure and dummy receipts
   const [deposits, setDeposits] = useState([
     {
       id: 1,
@@ -36,7 +36,8 @@ const DepositsScreen = ({ route }) => {
       note: 'Monthly contribution',
       category: 'Group Fund',
       icon: 'card',
-      color: '#10b981'
+      color: '#10b981',
+      receipt: 'https://images.unsplash.com/photo-1563013544-824ae1b704d3?w=400&h=800&fit=crop'
     },
     {
       id: 2,
@@ -50,7 +51,8 @@ const DepositsScreen = ({ route }) => {
       note: 'Expense reimbursement',
       category: 'Reimbursement',
       icon: 'cash',
-      color: '#f59e0b'
+      color: '#f59e0b',
+      receipt: 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=400&h=800&fit=crop'
     },
     {
       id: 3,
@@ -64,7 +66,8 @@ const DepositsScreen = ({ route }) => {
       note: 'Upcoming trip expenses',
       category: 'Travel',
       icon: 'airplane',
-      color: '#8b5cf6'
+      color: '#8b5cf6',
+      receipt: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=400&h=800&fit=crop'
     },
     {
       id: 4,
@@ -78,7 +81,8 @@ const DepositsScreen = ({ route }) => {
       note: 'Event contribution',
       category: 'Events',
       icon: 'wallet',
-      color: '#06b6d4'
+      color: '#06b6d4',
+      receipt: 'https://images.unsplash.com/photo-1559526324-4b87b5e36e44?w=400&h=800&fit=crop'
     }
   ]);
 
@@ -363,7 +367,7 @@ const DepositsScreen = ({ route }) => {
         
         <TouchableOpacity 
           style={styles.actionButton}
-          onPress={() => Alert.alert('Receipt', `View receipt for ${item.note}`)}
+          onPress={() => navigation.navigate('ReceiptView', { deposit: item })}
         >
           <Ionicons name="receipt" size={16} color="#06b6d4" />
           <Text style={styles.actionButtonText}>Receipt</Text>
@@ -593,7 +597,7 @@ const styles = StyleSheet.create({
   // List
   listContent: {
     paddingHorizontal: 20,
-    paddingTop: 20,
+    paddingTop: 12,
     paddingBottom: 100,
   },
   itemSeparator: {
@@ -605,7 +609,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
     borderRadius: 16,
     padding: 20,
-    marginBottom: 20,
+    marginBottom: 12,
     shadowColor: '#06b6d4',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.08,
@@ -690,7 +694,7 @@ const styles = StyleSheet.create({
 
   // Filter Chips - Horizontal Scrolling
   filterScrollView: {
-    marginBottom: 20,
+    marginBottom: 12,
   },
   filterScrollContainer: {
     paddingHorizontal: 0,
@@ -750,7 +754,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 12,
   },
   sectionTitle: {
     fontSize: 18,

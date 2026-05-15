@@ -6,6 +6,8 @@ import CreateGroupScreen from '../screens/CreateGroupScreen';
 import TransactionsScreen from '../screens/TransactionsScreen';
 import DepositsScreen from '../screens/DepositsScreen';
 import CreateDepositScreen from '../screens/CreateDepositScreen';
+import ReceiptViewScreen from '../screens/ReceiptViewScreen';
+import ManageGroupScreen from '../screens/ManageGroupScreen';
 
 const Stack = createStackNavigator();
 
@@ -21,6 +23,8 @@ const GroupsStackNavigator = () => {
       <Stack.Screen name="Transactions" component={TransactionsScreen} />
       <Stack.Screen name="Deposits" component={DepositsScreen} />
       <Stack.Screen name="CreateDeposit" component={CreateDepositScreen} />
+      <Stack.Screen name="ReceiptView" component={ReceiptViewScreen} />
+      <Stack.Screen name="ManageGroup" component={ManageGroupScreen} />
     </Stack.Navigator>
   );
 };

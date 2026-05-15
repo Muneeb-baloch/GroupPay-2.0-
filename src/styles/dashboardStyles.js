@@ -1,4 +1,6 @@
-import { StyleSheet } from 'react-native';
+import { StyleSheet, Dimensions } from 'react-native';
+
+const { width, height } = Dimensions.get('window');
 
 export const dashboardStyles = StyleSheet.create({
   unifiedCard: {
@@ -81,10 +83,22 @@ export const dashboardStyles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 8,
   },
+  balanceLabelContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  },
   balanceLabel: {
     fontSize: 16,
-    color: 'rgba(255, 255, 255, 0.8)',
-    fontWeight: '500',
+    color: 'rgba(255, 255, 255, 0.9)',
+    fontWeight: '600',
+  },
+  eyeButton: {
+    padding: 4,
   },
   balanceAmount: {
     fontSize: 36,
@@ -126,5 +140,111 @@ export const dashboardStyles = StyleSheet.create({
     fontWeight: '500',
     textAlign: 'center',
     marginTop: 4,
+  },
+
+  // Group Filter Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContainer: {
+    backgroundColor: '#ffffff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: height * 0.7,
+    paddingTop: 20,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingBottom: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+  modalCloseButton: {
+    padding: 4,
+    borderRadius: 20,
+    backgroundColor: '#f8fafc',
+  },
+  groupsList: {
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+  },
+  groupFilterItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    marginBottom: 8,
+    borderRadius: 12,
+    backgroundColor: '#f8fafc',
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  groupFilterItemSelected: {
+    backgroundColor: '#f0f9ff',
+    borderColor: '#06b6d4',
+  },
+  groupFilterInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  groupFilterIndicator: {
+    width: 4,
+    height: 32,
+    borderRadius: 2,
+    marginRight: 12,
+  },
+  groupFilterDetails: {
+    flex: 1,
+  },
+  groupFilterName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#0f172a',
+    marginBottom: 2,
+  },
+  groupFilterNameSelected: {
+    color: '#06b6d4',
+  },
+  groupFilterBalance: {
+    fontSize: 14,
+    color: '#64748b',
+    fontWeight: '500',
+  },
+  groupFilterBalanceSelected: {
+    color: '#0891b2',
+  },
+  modalFooter: {
+    paddingHorizontal: 24,
+    paddingVertical: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#f1f5f9',
+  },
+  applyButton: {
+    backgroundColor: '#06b6d4',
+    paddingVertical: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    shadowColor: '#06b6d4',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  applyButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#ffffff',
   },
 });

@@ -1,0 +1,12 @@
+# Images Folder
+
+Place your images here:
+- Background images
+- Profile pictures
+- Card images
+- General UI images
+
+Example usage:
+```javascript
+import BackgroundImage from '../assets/images/background.png';
+```

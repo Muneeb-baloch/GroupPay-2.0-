@@ -4,7 +4,7 @@ import CustomBottomTab from '../components/CustomBottomTab';
 
 import HomeScreen from '../screens/HomeScreen';
 import GroupsStackNavigator from './GroupsStackNavigator';
-import ScenesScreen from '../screens/ScenesScreen';
+import ScenesStackNavigator from './ScenesStackNavigator';
 import ExpensesScreen from '../screens/ExpensesScreen';
 
 const Tab = createBottomTabNavigator();
@@ -19,7 +19,7 @@ const BottomTabNavigator = () => {
     >
       <Tab.Screen name="Home" component={HomeScreen} />
       <Tab.Screen name="Groups" component={GroupsStackNavigator} />
-      <Tab.Screen name="Scenes" component={ScenesScreen} />
+      <Tab.Screen name="Scenes" component={ScenesStackNavigator} />
       <Tab.Screen name="Expenses" component={ExpensesScreen} />
     </Tab.Navigator>
   );

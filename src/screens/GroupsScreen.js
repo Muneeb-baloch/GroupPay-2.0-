@@ -30,7 +30,8 @@ const GroupsScreen = ({ route }) => {
         totalBalance: 1250.50,
         lastActivity: '2 hours ago',
         memberInitials: ['MU'],
-        color: '#06b6d4'
+        color: '#06b6d4',
+        isFavorite: false
       }
     ],
     member: [
@@ -43,7 +44,8 @@ const GroupsScreen = ({ route }) => {
         totalBalance: -367.75,
         lastActivity: '1 day ago',
         memberInitials: ['MU', 'YU', 'AH', 'SK'],
-        color: '#8b5cf6'
+        color: '#8b5cf6',
+        isFavorite: true
       }
     ]
   });
@@ -130,7 +132,11 @@ const GroupsScreen = ({ route }) => {
         groupId: group.id,
         groupData: group
       }),
-      settings: () => Alert.alert('Settings', `Group settings for ${group.name}`),
+      manage: () => navigation.navigate('ManageGroup', {
+        groupName: group.name,
+        groupId: group.id,
+        groupData: group
+      }),
       leave: () => Alert.alert(
         'Leave Group', 
         `Are you sure you want to leave "${group.name}"? This action cannot be undone.`,
@@ -143,6 +149,25 @@ const GroupsScreen = ({ route }) => {
     
     actions[action]?.();
   }, [navigation]);
+
+  const toggleFavorite = useCallback((groupId) => {
+    setGroupsData(prevData => {
+      const newData = { ...prevData };
+      
+      // Find and update the group in the appropriate category
+      Object.keys(newData).forEach(category => {
+        const groupIndex = newData[category].findIndex(group => group.id === groupId);
+        if (groupIndex !== -1) {
+          newData[category][groupIndex] = {
+            ...newData[category][groupIndex],
+            isFavorite: !newData[category][groupIndex].isFavorite
+          };
+        }
+      });
+      
+      return newData;
+    });
+  }, []);
 
   const formatBalance = useCallback((balance) => {
     const isNegative = balance < 0;
@@ -197,8 +222,16 @@ const GroupsScreen = ({ route }) => {
           </View>
         </View>
 
-        <TouchableOpacity style={styles.favoriteButton} activeOpacity={0.7}>
-          <Ionicons name="star-outline" size={18} color="#9ca3af" />
+        <TouchableOpacity 
+          style={styles.favoriteButton} 
+          activeOpacity={0.7}
+          onPress={() => toggleFavorite(group.id)}
+        >
+          <Ionicons 
+            name={group.isFavorite ? "star" : "star-outline"} 
+            size={18} 
+            color={group.isFavorite ? "#f59e0b" : "#9ca3af"} 
+          />
         </TouchableOpacity>
       </View>
 
@@ -269,29 +302,30 @@ const GroupsScreen = ({ route }) => {
         
         <TouchableOpacity 
           style={styles.actionButton}
-          onPress={() => handleGroupAction(group.role === 'admin' ? 'settings' : 'leave', group)}
+          onPress={() => handleGroupAction(group.role === 'admin' ? 'manage' : 'leave', group)}
           activeOpacity={0.7}
         >
           <View style={[
             styles.actionIconContainer, 
-            { backgroundColor: group.role === 'admin' ? '#f8fafc' : '#fef2f2' }
+            { backgroundColor: group.role === 'admin' ? '#f0f9ff' : '#fef2f2' }
           ]}>
             <Ionicons 
-              name={group.role === 'admin' ? 'settings' : 'exit'} 
+              name={group.role === 'admin' ? 'people' : 'exit'} 
               size={16} 
-              color={group.role === 'admin' ? '#64748b' : '#dc2626'} 
+              color={group.role === 'admin' ? '#06b6d4' : '#dc2626'} 
             />
           </View>
           <Text style={[
             styles.actionLabel,
+            group.role === 'admin' && { color: '#06b6d4' },
             group.role !== 'admin' && { color: '#dc2626' }
           ]}>
-            {group.role === 'admin' ? 'Settings' : 'Leave'}
+            {group.role === 'admin' ? 'Manage' : 'Leave'}
           </Text>
         </TouchableOpacity>
       </View>
     </Pressable>
-  ), [handleGroupAction, formatBalance, getStatusColor]);
+  ), [handleGroupAction, formatBalance, getStatusColor, toggleFavorite]);
 
   const renderEmptyState = useCallback(() => (
     <View style={styles.emptyState}>
@@ -551,7 +585,7 @@ const styles = StyleSheet.create({
   },
   flatListContent: {
     paddingHorizontal: 20,
-    paddingTop: 20,
+    paddingTop: 12,
     paddingBottom: 100, // Account for bottom tab
   },
   itemSeparator: {
@@ -566,7 +600,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 20,
+    marginBottom: 12,
   },
   headerContent: {
     flex: 1,
@@ -615,7 +649,7 @@ const styles = StyleSheet.create({
 
   // Filter Chips - Simplified
   filterSection: {
-    marginBottom: 24,
+    marginBottom: 12,
   },
   filterContainer: {
     flexDirection: 'row',

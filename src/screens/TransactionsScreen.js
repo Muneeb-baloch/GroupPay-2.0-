@@ -38,7 +38,8 @@ const TransactionsScreen = ({ route }) => {
       splitAmount: 115.50,
       icon: 'restaurant',
       color: '#f59e0b',
-      groupId: groupId || 1
+      groupId: groupId || 1,
+      receipt: 'https://images.unsplash.com/photo-1563013544-824ae1b704d3?w=400&h=800&fit=crop'
     },
     {
       id: 2,
@@ -53,7 +54,8 @@ const TransactionsScreen = ({ route }) => {
       splitAmount: 150.00,
       icon: 'card',
       color: '#10b981',
-      groupId: groupId || 1
+      groupId: groupId || 1,
+      receipt: 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=400&h=800&fit=crop'
     },
     {
       id: 3,
@@ -68,7 +70,8 @@ const TransactionsScreen = ({ route }) => {
       splitAmount: 15.25,
       icon: 'car',
       color: '#8b5cf6',
-      groupId: groupId || 1
+      groupId: groupId || 1,
+      receipt: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=400&h=800&fit=crop'
     },
     {
       id: 4,
@@ -83,7 +86,8 @@ const TransactionsScreen = ({ route }) => {
       splitAmount: 60.00,
       icon: 'film',
       color: '#ef4444',
-      groupId: groupId || 1
+      groupId: groupId || 1,
+      receipt: 'https://images.unsplash.com/photo-1559526324-4b87b5e36e44?w=400&h=800&fit=crop'
     },
     {
       id: 5,
@@ -423,6 +427,29 @@ const TransactionsScreen = ({ route }) => {
           )}
         </View>
       </View>
+
+      {/* Action Row */}
+      <View style={styles.actionRow}>
+        <View style={styles.typeTag}>
+          <Text style={styles.typeText}>{item.type.toUpperCase()}</Text>
+        </View>
+        
+        <TouchableOpacity 
+          style={styles.actionButton}
+          onPress={() => navigation.navigate('ReceiptView', { 
+            deposit: {
+              ...item,
+              note: item.description,
+              method: item.type === 'payment' ? 'bank_transfer' : 'cash',
+              from: item.name,
+              to: item.type === 'payment' ? 'You' : 'Group Fund'
+            }
+          })}
+        >
+          <Ionicons name="receipt" size={16} color="#06b6d4" />
+          <Text style={styles.actionButtonText}>Receipt</Text>
+        </TouchableOpacity>
+      </View>
     </Pressable>
   ), [formatDate, formatAmount, getStatusColor]);
 
@@ -678,7 +705,7 @@ const styles = StyleSheet.create({
   // List
   listContent: {
     paddingHorizontal: 20,
-    paddingTop: 20,
+    paddingTop: 12,
     paddingBottom: 100,
   },
   itemSeparator: {
@@ -690,7 +717,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
     borderRadius: 16,
     padding: 20,
-    marginBottom: 20,
+    marginBottom: 12,
     shadowColor: '#06b6d4',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.08,
@@ -782,7 +809,7 @@ const styles = StyleSheet.create({
 
   // Filter Chips - Horizontal Scrolling
   filterScrollView: {
-    marginBottom: 20,
+    marginBottom: 12,
   },
   filterScrollContainer: {
     paddingHorizontal: 0,
@@ -847,7 +874,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 12,
   },
   sectionTitle: {
     fontSize: 18,
@@ -1021,6 +1048,39 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     color: '#64748b',
+  },
+
+  // Action Row
+  actionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  typeTag: {
+    backgroundColor: '#f1f5f9',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  typeText: {
+    fontSize: 11,
+    color: '#64748b',
+    fontWeight: '700',
+  },
+  actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: '#f0f9ff',
+    borderRadius: 8,
+  },
+  actionButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#06b6d4',
   },
 
   // Empty State

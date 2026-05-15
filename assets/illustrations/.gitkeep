@@ -1,0 +1,12 @@
+# Illustrations Folder
+
+Place your illustrations here:
+- Empty state illustrations
+- Onboarding graphics
+- Feature illustrations
+- Decorative elements
+
+Example usage:
+```javascript
+import EmptyStateIllustration from '../assets/illustrations/empty-state.png';
+```
