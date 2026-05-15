@@ -1,0 +1,82 @@
+import { StyleSheet, Dimensions } from 'react-native';
+
+const { width } = Dimensions.get('window');
+
+export const customTabStyles = StyleSheet.create({
+  container: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    backgroundColor: 'transparent',
+    paddingBottom: 0,
+  },
+  tabBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#ffffff',
+    borderRadius: 32,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    marginHorizontal: 16,
+    shadowColor: '#0f172a',
+    shadowOffset: {
+      width: 0,
+      height: 12,
+    },
+    shadowOpacity: 0.08,
+    shadowRadius: 24,
+    elevation: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(15, 23, 42, 0.05)',
+  },
+  indicator: {
+    position: 'absolute',
+    top: 8,
+    width: 50,
+    height: 50,
+    backgroundColor: 'rgba(6, 182, 212, 0.12)',
+    borderRadius: 25,
+    zIndex: 0,
+  },
+  tabButton: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 6,
+    zIndex: 1,
+  },
+  tabIconContainer: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+    borderRadius: 18,
+  },
+  activeTabContainer: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+    borderRadius: 20,
+    backgroundColor: '#06b6d4',
+    shadowColor: '#06b6d4',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  tabLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginTop: -2,
+  },
+});
