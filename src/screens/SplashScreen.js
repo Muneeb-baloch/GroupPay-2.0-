@@ -6,10 +6,13 @@ import {
   StatusBar,
   Image,
   Animated,
-  Easing
+  Easing,
+  Platform,
+  Dimensions
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-// import LottieView from 'lottie-react-native'; // Uncomment when you have wallet.json
+
+const { width } = Dimensions.get('window');
 
 const SplashScreen = ({ onFinish }) => {
   // Animation values
@@ -20,39 +23,41 @@ const SplashScreen = ({ onFinish }) => {
   const titleOpacity = useRef(new Animated.Value(0)).current;
   const titleTranslateY = useRef(new Animated.Value(30)).current;
   const loadingOpacity = useRef(new Animated.Value(0)).current;
-  const progressWidth = useRef(new Animated.Value(0)).current;
+
+  // Progress tracking via clean Native Driver TranslateX
+  const progressAnim = useRef(new Animated.Value(-200)).current;
   const spinValue = useRef(new Animated.Value(0)).current;
   const fadeOut = useRef(new Animated.Value(1)).current;
-  
+
   // Floating dots animations
   const floatingDot1 = useRef(new Animated.Value(0)).current;
   const floatingDot2 = useRef(new Animated.Value(0)).current;
   const floatingDot3 = useRef(new Animated.Value(0)).current;
   const floatingDot4 = useRef(new Animated.Value(0)).current;
-  
+
   // Background circles animations
   const backgroundCircle1 = useRef(new Animated.Value(0)).current;
   const backgroundCircle2 = useRef(new Animated.Value(0)).current;
   const backgroundCircle3 = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    // Start all animations in sequence
     startAnimationSequence();
-    
-    // Auto-finish splash after animations complete with fade out
+
     const timer = setTimeout(() => {
-      // Start fade out animation
       Animated.timing(fadeOut, {
         toValue: 0,
-        duration: 500,
+        duration: 400,
         useNativeDriver: true,
       }).start(() => {
-        onFinish();
+        // Ensure callback safe execution to avoid white screen lockup
+        if (typeof onFinish === 'function') {
+          onFinish();
+        }
       });
-    }, 3500); // Start fade out 500ms earlier
+    }, 3500);
 
     return () => clearTimeout(timer);
-  }, [onFinish, fadeOut]);
+  }, [onFinish]);
 
   const startAnimationSequence = () => {
     // 1. Logo entrance animation
@@ -60,7 +65,7 @@ const SplashScreen = ({ onFinish }) => {
       Animated.timing(logoScale, {
         toValue: 1,
         duration: 800,
-        easing: Easing.elastic(1.2),
+        easing: Easing.elastic(1.1),
         useNativeDriver: true,
       }),
       Animated.timing(logoOpacity, {
@@ -76,82 +81,79 @@ const SplashScreen = ({ onFinish }) => {
         Animated.timing(walletTranslateY, {
           toValue: 0,
           duration: 800,
-          easing: Easing.out(Easing.back(1.5)),
+          easing: Easing.out(Easing.quad),
           useNativeDriver: true,
         }),
         Animated.timing(walletRotate, {
           toValue: 1,
-          duration: 1000,
+          duration: 900,
           easing: Easing.out(Easing.quad),
           useNativeDriver: true,
         }),
       ]).start();
-    }, 300);
+    }, 250);
 
     // 3. Title animation (delayed)
     setTimeout(() => {
       Animated.parallel([
         Animated.timing(titleOpacity, {
           toValue: 1,
-          duration: 600,
+          duration: 500,
           useNativeDriver: true,
         }),
         Animated.timing(titleTranslateY, {
           toValue: 0,
-          duration: 800,
+          duration: 700,
           easing: Easing.out(Easing.quad),
           useNativeDriver: true,
         }),
       ]).start();
-    }, 800);
+    }, 750);
 
-    // 4. Loading section (delayed)
+    // 4. Loading section & Progress loading
     setTimeout(() => {
       Animated.timing(loadingOpacity, {
         toValue: 1,
-        duration: 500,
+        duration: 400,
         useNativeDriver: true,
       }).start();
-      
-      // Progress bar animation
-      Animated.timing(progressWidth, {
-        toValue: 100,
+
+      // Move progress fill smoothly across the absolute container track natively
+      Animated.timing(progressAnim, {
+        toValue: 0,
         duration: 2000,
         easing: Easing.out(Easing.quad),
-        useNativeDriver: false,
+        useNativeDriver: true,
       }).start();
-    }, 1200);
+    }, 1100);
 
-    // 5. Continuous animations
     startContinuousAnimations();
     startBackgroundAnimations();
   };
 
   const startContinuousAnimations = () => {
-    // Spinning loader
     Animated.loop(
       Animated.timing(spinValue, {
         toValue: 1,
-        duration: 1000,
+        duration: 1200,
         easing: Easing.linear,
         useNativeDriver: true,
       })
     ).start();
 
-    // Floating dots
     const createFloatingAnimation = (animatedValue, delay = 0) => {
       return Animated.loop(
         Animated.sequence([
           Animated.delay(delay),
           Animated.timing(animatedValue, {
             toValue: 1,
-            duration: 2000,
+            duration: 1800,
             easing: Easing.inOut(Easing.sin),
             useNativeDriver: true,
           }),
           Animated.timing(animatedValue, {
             toValue: 0,
-            duration: 2000,
+            duration: 1800,
             easing: Easing.inOut(Easing.sin),
             useNativeDriver: true,
           }),
@@ -160,9 +162,9 @@ const SplashScreen = ({ onFinish }) => {
     };
 
     createFloatingAnimation(floatingDot1, 0).start();
-    createFloatingAnimation(floatingDot2, 500).start();
-    createFloatingAnimation(floatingDot3, 1000).start();
-    createFloatingAnimation(floatingDot4, 1500).start();
+    createFloatingAnimation(floatingDot2, 400).start();
+    createFloatingAnimation(floatingDot3, 800).start();
+    createFloatingAnimation(floatingDot4, 1200).start();
   };
 
   const startBackgroundAnimations = () => {
@@ -172,13 +174,13 @@ const SplashScreen = ({ onFinish }) => {
           Animated.delay(delay),
           Animated.timing(animatedValue, {
             toValue: 1,
-            duration: 4000,
+            duration: 3500,
             easing: Easing.inOut(Easing.quad),
             useNativeDriver: true,
           }),
           Animated.timing(animatedValue, {
             toValue: 0,
-            duration: 4000,
+            duration: 3500,
             easing: Easing.inOut(Easing.quad),
             useNativeDriver: true,
           }),
@@ -187,11 +189,11 @@ const SplashScreen = ({ onFinish }) => {
     };
 
     createBackgroundAnimation(backgroundCircle1, 0).start();
-    createBackgroundAnimation(backgroundCircle2, 1000).start();
-    createBackgroundAnimation(backgroundCircle3, 2000).start();
+    createBackgroundAnimation(backgroundCircle2, 800).start();
+    createBackgroundAnimation(backgroundCircle3, 1600).start();
   };
 
-  // Animation interpolations
+  // Rotation interpolations
   const walletRotateInterpolate = walletRotate.interpolate({
     inputRange: [0, 1],
     outputRange: ['0deg', '360deg'],
@@ -202,116 +204,65 @@ const SplashScreen = ({ onFinish }) => {
     outputRange: ['0deg', '360deg'],
   });
 
-  const progressWidthInterpolate = progressWidth.interpolate({
-    inputRange: [0, 100],
-    outputRange: ['0%', '100%'],
-  });
+  // Dynamic float and scale configurations
+  const floatingDot1Y = floatingDot1.interpolate({ inputRange: [0, 1], outputRange: [0, -12] });
+  const floatingDot2Y = floatingDot2.interpolate({ inputRange: [0, 1], outputRange: [0, -16] });
+  const floatingDot3Y = floatingDot3.interpolate({ inputRange: [0, 1], outputRange: [0, -8] });
+  const floatingDot4Y = floatingDot4.interpolate({ inputRange: [0, 1], outputRange: [0, -20] });
 
-  // Floating dots interpolations
-  const floatingDot1Y = floatingDot1.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, -15],
-  });
-
-  const floatingDot2Y = floatingDot2.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, -20],
-  });
-
-  const floatingDot3Y = floatingDot3.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, -10],
-  });
-
-  const floatingDot4Y = floatingDot4.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, -25],
-  });
-
-  // Background circles interpolations
-  const backgroundCircle1Scale = backgroundCircle1.interpolate({
-    inputRange: [0, 1],
-    outputRange: [1, 1.2],
-  });
-
-  const backgroundCircle2Scale = backgroundCircle2.interpolate({
-    inputRange: [0, 1],
-    outputRange: [1, 1.1],
-  });
-
-  const backgroundCircle3Scale = backgroundCircle3.interpolate({
-    inputRange: [0, 1],
-    outputRange: [1, 1.3],
-  });
+  const backgroundCircle1Scale = backgroundCircle1.interpolate({ inputRange: [0, 1], outputRange: [1, 1.15] });
+  const backgroundCircle2Scale = backgroundCircle2.interpolate({ inputRange: [0, 1], outputRange: [1, 1.08] });
+  const backgroundCircle3Scale = backgroundCircle3.interpolate({ inputRange: [0, 1], outputRange: [1, 1.25] });
 
   return (
     <Animated.View style={[styles.container, { opacity: fadeOut }]}>
+      {/* Non-translucent status bar to safeguard viewport boundaries */}
       <StatusBar barStyle="light-content" backgroundColor="#0891b2" />
-      
-      {/* Gradient Background */}
+
       <LinearGradient
         colors={['#0891b2', '#06b6d4', '#cffafe']}
         style={styles.gradient}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
       >
-        {/* Background Decorative Elements */}
+        {/* Background Elements */}
         <View style={styles.backgroundElements}>
-          <Animated.View 
+          <Animated.View
             style={[
-              styles.circle, 
-              styles.circle1,
+              styles.circle, styles.circle1,
               {
                 transform: [{ scale: backgroundCircle1Scale }],
-                opacity: backgroundCircle1.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0.05, 0.1],
-                }),
+                opacity: backgroundCircle1.interpolate({ inputRange: [0, 1], outputRange: [0.06, 0.12] }),
               }
-            ]} 
+            ]}
           />
-          <Animated.View 
+          <Animated.View
             style={[
-              styles.circle, 
-              styles.circle2,
+              styles.circle, styles.circle2,
               {
                 transform: [{ scale: backgroundCircle2Scale }],
-                opacity: backgroundCircle2.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0.05, 0.08],
-                }),
+                opacity: backgroundCircle2.interpolate({ inputRange: [0, 1], outputRange: [0.05, 0.09] }),
               }
-            ]} 
+            ]}
           />
-          <Animated.View 
+          <Animated.View
             style={[
-              styles.circle, 
-              styles.circle3,
+              styles.circle, styles.circle3,
               {
                 transform: [{ scale: backgroundCircle3Scale }],
-                opacity: backgroundCircle3.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0.05, 0.12],
-                }),
+                opacity: backgroundCircle3.interpolate({ inputRange: [0, 1], outputRange: [0.06, 0.14] }),
               }
-            ]} 
+            ]}
           />
         </View>
 
-        {/* Main Content */}
+        {/* Content Box */}
         <View style={styles.content}>
-          {/* Logo Section */}
-          <Animated.View 
-            style={[
-              styles.logoContainer,
-              {
-                opacity: logoOpacity,
-                transform: [{ scale: logoScale }]
-              }
-            ]}
-          >
+
+          {/* Logo */}
+          <Animated.View style={[styles.logoContainer, { opacity: logoOpacity, transform: [{ scale: logoScale }] }]}>
             <View style={styles.logoWrapper}>
-              <Image 
+              <Image
                 source={require('../../assets/logos/main_wallet_logo.png')}
                 style={styles.logoImage}
                 resizeMode="contain"
@@ -319,51 +270,10 @@ const SplashScreen = ({ onFinish }) => {
             </View>
           </Animated.View>
 
-          {/* Animation Section */}
-          <Animated.View 
-            style={[
-              styles.animationContainer,
-              {
-                opacity: logoOpacity,
-                transform: [
-                  { scale: logoScale },
-                  { translateY: walletTranslateY }
-                ]
-              }
-            ]}
-          >
-            {/* 
-              YOUR WALLET LOTTIE ANIMATION:
-              
-              SOLUTION FOR .LOTTIE FILES:
-              React Native's lottie-react-native only supports .json format, not .lottie files.
-              
-              CONVERSION OPTIONS:
-              1. LottieFiles.com: Upload your wallet.lottie → Download as JSON
-              2. After Effects: Re-export as Lottie JSON
-              3. Online converters: Search "lottie to json converter"
-              
-              Once you have wallet.json, replace this section with:
-              
-              <LottieView
-                source={require('../../assets/animations/wallet.json')}
-                autoPlay
-                loop
-                style={styles.lottieAnimation}
-                resizeMode="contain"
-              />
-              
-              And uncomment the LottieView import at the top.
-            */}
-            
-            {/* Beautiful Wallet Animation (Temporary - Universal Currency Theme) */}
+          {/* Icon/Coin Animations */}
+          <Animated.View style={[styles.animationContainer, { opacity: logoOpacity, transform: [{ translateY: walletTranslateY }] }]}>
             <View style={styles.walletAnimationContainer}>
-              <Animated.View 
-                style={[
-                  styles.walletIcon,
-                  { transform: [{ rotate: walletRotateInterpolate }] }
-                ]}
-              >
+              <Animated.View style={[styles.walletIcon, { transform: [{ rotate: walletRotateInterpolate }] }]}>
                 <View style={styles.walletBody}>
                   <View style={styles.walletTop} />
                   <View style={styles.walletCards}>
@@ -374,82 +284,30 @@ const SplashScreen = ({ onFinish }) => {
                 </View>
                 <View style={styles.walletShadow} />
               </Animated.View>
-              
-              {/* Universal Payment Symbols floating around */}
-              <Animated.View 
-                style={[
-                  styles.paymentSymbol,
-                  styles.symbol1,
-                  { transform: [{ translateY: floatingDot1Y }, { rotate: '45deg' }] }
-                ]}
-              >
+
+              <Animated.View style={[styles.paymentSymbol, styles.symbol1, { transform: [{ translateY: floatingDot1Y }, { rotate: '15deg' }] }]}>
                 <Text style={styles.symbolText}>PKR</Text>
               </Animated.View>
-              
-              <Animated.View 
-                style={[
-                  styles.paymentSymbol,
-                  styles.symbol2,
-                  { transform: [{ translateY: floatingDot2Y }, { rotate: '-30deg' }] }
-                ]}
-              >
+
+              <Animated.View style={[styles.paymentSymbol, styles.symbol2, { transform: [{ translateY: floatingDot2Y }, { rotate: '-15deg' }] }]}>
                 <Text style={styles.symbolText}>$</Text>
               </Animated.View>
-              
-              <Animated.View 
-                style={[
-                  styles.paymentSymbol,
-                  styles.symbol3,
-                  { transform: [{ translateY: floatingDot3Y }, { rotate: '60deg' }] }
-                ]}
-              >
+
+              <Animated.View style={[styles.paymentSymbol, styles.symbol3, { transform: [{ translateY: floatingDot3Y }, { rotate: '20deg' }] }]}>
                 <Text style={styles.symbolText}>€</Text>
               </Animated.View>
             </View>
-            
-            {/* Floating Elements */}
+
             <View style={styles.floatingElements}>
-              <Animated.View 
-                style={[
-                  styles.floatingDot, 
-                  styles.floatingDot1,
-                  { transform: [{ translateY: floatingDot1Y }] }
-                ]} 
-              />
-              <Animated.View 
-                style={[
-                  styles.floatingDot, 
-                  styles.floatingDot2,
-                  { transform: [{ translateY: floatingDot2Y }] }
-                ]} 
-              />
-              <Animated.View 
-                style={[
-                  styles.floatingDot, 
-                  styles.floatingDot3,
-                  { transform: [{ translateY: floatingDot3Y }] }
-                ]} 
-              />
-              <Animated.View 
-                style={[
-                  styles.floatingDot, 
-                  styles.floatingDot4,
-                  { transform: [{ translateY: floatingDot4Y }] }
-                ]} 
-              />
+              <Animated.View style={[styles.floatingDot, styles.floatingDot1, { transform: [{ translateY: floatingDot1Y }] }]} />
+              <Animated.View style={[styles.floatingDot, styles.floatingDot2, { transform: [{ translateY: floatingDot2Y }] }]} />
+              <Animated.View style={[styles.floatingDot, styles.floatingDot3, { transform: [{ translateY: floatingDot3Y }] }]} />
+              <Animated.View style={[styles.floatingDot, styles.floatingDot4, { transform: [{ translateY: floatingDot4Y }] }]} />
             </View>
           </Animated.View>
 
-          {/* App Title */}
-          <Animated.View 
-            style={[
-              styles.titleContainer,
-              {
-                opacity: titleOpacity,
-                transform: [{ translateY: titleTranslateY }]
-              }
-            ]}
-          >
+          {/* Titles */}
+          <Animated.View style={[styles.titleContainer, { opacity: titleOpacity, transform: [{ translateY: titleTranslateY }] }]}>
             <Text style={styles.appTitle}>GroupPay</Text>
             <Text style={styles.appSubtitle}>Split. Track. Settle.</Text>
             <View style={styles.taglineContainer}>
@@ -459,38 +317,31 @@ const SplashScreen = ({ onFinish }) => {
             </View>
           </Animated.View>
 
-          {/* Loading Text */}
-          <Animated.View 
-            style={[
-              styles.loadingContainer,
-              { opacity: loadingOpacity }
-            ]}
-          >
+          {/* Loader indicator bar */}
+          <Animated.View style={[styles.loadingContainer, { opacity: loadingOpacity }]}>
             <View style={styles.loadingTextContainer}>
-              <Animated.View 
-                style={[
-                  styles.loadingSpinner,
-                  { transform: [{ rotate: spinInterpolate }] }
-                ]}
-              />
+              <Animated.View style={[styles.loadingSpinner, { transform: [{ rotate: spinInterpolate }] }]} />
               <Text style={styles.loadingText}>Loading your wallet...</Text>
             </View>
-            
-            {/* Animated Progress Bar */}
+
             <View style={styles.progressContainer}>
               <View style={styles.progressBar}>
-                <Animated.View 
+                {/* FIXED: Shift view position natively instead of modifying layout constraints directly */}
+                <Animated.View
                   style={[
                     styles.progressFill,
-                    { width: progressWidthInterpolate }
-                  ]} 
+                    {
+                      transform: [
+                        { translateX: progressAnim }
+                      ]
+                    }
+                  ]}
                 />
               </View>
             </View>
           </Animated.View>
         </View>
 
-        {/* Footer */}
         <View style={styles.footer}>
           <Text style={styles.footerText}>Powered by GroupPay</Text>
           <Text style={styles.versionText}>Version 1.0.0</Text>
@@ -503,326 +354,234 @@ const SplashScreen = ({ onFinish }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#0891b2', // Solid background fallback to keep transition smooth
   },
   gradient: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  
-  // Background Elements
   backgroundElements: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+    ...StyleSheet.absoluteFillObject,
   },
   circle: {
     position: 'absolute',
-    borderRadius: 1000,
+    borderRadius: 999,
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
   },
   circle1: {
-    width: 200,
-    height: 200,
-    top: -50,
-    right: -50,
+    width: 240,
+    height: 240,
+    top: -60,
+    right: -60,
   },
   circle2: {
-    width: 150,
-    height: 150,
-    bottom: 100,
-    left: -30,
+    width: 180,
+    height: 180,
+    bottom: 120,
+    left: -40,
   },
   circle3: {
-    width: 100,
-    height: 100,
-    top: '40%',
-    right: 20,
+    width: 120,
+    height: 120,
+    top: '42%',
+    right: 10,
   },
-
-  // Main Content
   content: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 40,
+    paddingTop: Platform.OS === 'ios' ? 40 : 20,
   },
-
-  // Logo Section
   logoContainer: {
-    marginBottom: 40,
+    marginBottom: 25,
   },
   logoWrapper: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
+    width: 110,
+    height: 110,
+    borderRadius: 55,
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.3,
-    shadowRadius: 16,
-    elevation: 8,
-    borderWidth: 3,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.35)',
   },
   logoImage: {
-    width: 80,
-    height: 80,
+    width: 70,
+    height: 70,
   },
-
-  // Animation Section
   animationContainer: {
-    marginBottom: 40,
+    marginBottom: 25,
     alignItems: 'center',
     justifyContent: 'center',
-    height: 200,
-    position: 'relative',
+    height: 160,
+    width: '100%',
   },
-  lottieAnimation: {
-    width: 180,
-    height: 180,
-  },
-  
-  // Wallet Animation (Custom)
   walletAnimationContainer: {
     alignItems: 'center',
     justifyContent: 'center',
     width: 180,
-    height: 180,
+    height: 160,
     position: 'relative',
   },
   walletIcon: {
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 2,
   },
   walletBody: {
-    width: 80,
-    height: 60,
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
-    borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
+    width: 84,
+    height: 62,
+    backgroundColor: '#ffffff',
+    borderRadius: 14,
     position: 'relative',
     overflow: 'hidden',
   },
   walletTop: {
     width: '100%',
-    height: 8,
+    height: 10,
     backgroundColor: '#06b6d4',
-    borderTopLeftRadius: 12,
-    borderTopRightRadius: 12,
   },
   walletCards: {
     flex: 1,
     padding: 8,
-    justifyContent: 'space-between',
+    justifyContent: 'center',
+    gap: 4,
   },
   card: {
-    height: 8,
+    height: 6,
     borderRadius: 2,
-    marginVertical: 1,
   },
-  card1: {
-    backgroundColor: '#06b6d4', // Cyan - matches app theme
-    width: '90%',
-  },
-  card2: {
-    backgroundColor: '#0ea5e9', // Blue - matches app theme
-    width: '75%',
-  },
-  card3: {
-    backgroundColor: '#0891b2', // Darker cyan - matches app theme
-    width: '85%',
-  },
+  card1: { backgroundColor: '#06b6d4', width: '85%' },
+  card2: { backgroundColor: '#0ea5e9', width: '65%' },
+  card3: { backgroundColor: '#0891b2', width: '75%' },
   walletShadow: {
-    position: 'absolute',
-    bottom: -8,
-    left: 4,
-    right: 4,
     height: 4,
-    backgroundColor: 'rgba(0, 0, 0, 0.1)',
-    borderRadius: 20,
-    transform: [{ scaleX: 0.8 }],
+    width: 60,
+    backgroundColor: 'rgba(0, 0, 0, 0.15)',
+    borderRadius: 10,
+    marginTop: 8,
   },
-  
-  // Payment Symbols
   paymentSymbol: {
     position: 'absolute',
-    minWidth: 36,
-    height: 32,
-    paddingHorizontal: 8,
-    borderRadius: 16,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 4,
+    zIndex: 3,
   },
-  symbol1: {
-    top: 20,
-    left: 20,
-  },
-  symbol2: {
-    top: 40,
-    right: 15,
-  },
-  symbol3: {
-    bottom: 30,
-    left: 25,
-  },
+  symbol1: { top: 10, left: 10 },
+  symbol2: { top: 25, right: 10 },
+  symbol3: { bottom: 20, left: 15 },
   symbolText: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: 'rgba(255, 255, 255, 0.9)',
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#ffffff',
   },
-  
-  // Floating Elements (around Lottie)
   floatingElements: {
-    position: 'absolute',
-    width: '100%',
-    height: '100%',
-    top: 0,
-    left: 0,
+    ...StyleSheet.absoluteFillObject,
   },
   floatingDot: {
     position: 'absolute',
-    borderRadius: 6,
-    backgroundColor: 'rgba(255, 255, 255, 0.7)',
+    borderRadius: 99,
+    backgroundColor: 'rgba(255, 255, 255, 0.6)',
   },
-  floatingDot1: {
-    width: 8,
-    height: 8,
-    top: 30,
-    left: 20,
-  },
-  floatingDot2: {
-    width: 12,
-    height: 12,
-    top: 50,
-    right: 15,
-  },
-  floatingDot3: {
-    width: 6,
-    height: 6,
-    bottom: 40,
-    left: 25,
-  },
-  floatingDot4: {
-    width: 10,
-    height: 10,
-    bottom: 20,
-    right: 30,
-  },
-
-  // Title Section
+  floatingDot1: { width: 6, height: 6, top: 20, left: 30 },
+  floatingDot2: { width: 8, height: 8, top: 40, right: 35 },
+  floatingDot3: { width: 5, height: 5, bottom: 30, left: 40 },
+  floatingDot4: { width: 7, height: 7, bottom: 15, right: 45 },
   titleContainer: {
     alignItems: 'center',
-    marginBottom: 50,
+    marginBottom: 40,
   },
   appTitle: {
-    fontSize: 36,
-    fontWeight: '800',
+    fontSize: 38,
+    fontWeight: '900',
     color: '#ffffff',
-    marginBottom: 8,
-    letterSpacing: -1,
-    textShadowColor: 'rgba(0, 0, 0, 0.3)',
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 4,
+    marginBottom: 6,
+    letterSpacing: -0.5,
   },
   appSubtitle: {
-    fontSize: 16,
-    color: 'rgba(255, 255, 255, 0.9)',
-    fontWeight: '500',
-    letterSpacing: 2,
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.95)',
+    fontWeight: '600',
+    letterSpacing: 3,
     textTransform: 'uppercase',
     marginBottom: 12,
   },
   taglineContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
   },
   taglineDot: {
     width: 4,
     height: 4,
     borderRadius: 2,
-    backgroundColor: 'rgba(255, 255, 255, 0.6)',
+    backgroundColor: 'rgba(255, 255, 255, 0.5)',
   },
   taglineText: {
-    fontSize: 13,
-    color: 'rgba(255, 255, 255, 0.8)',
+    fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.75)',
     fontWeight: '500',
-    fontStyle: 'italic',
   },
-
-  // Loading Section
   loadingContainer: {
     alignItems: 'center',
+    height: 60,
   },
   loadingTextContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 8,
+    marginBottom: 14,
   },
   loadingSpinner: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
     borderWidth: 2,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
-    borderTopColor: 'rgba(255, 255, 255, 0.9)',
+    borderColor: 'rgba(255, 255, 255, 0.25)',
+    borderTopColor: '#ffffff',
   },
   loadingText: {
-    fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.8)',
+    fontSize: 13,
+    color: 'rgba(255, 255, 255, 0.85)',
     fontWeight: '500',
   },
-
-  // Progress Bar
   progressContainer: {
-    marginTop: 20,
     width: 200,
-    alignItems: 'center',
+    height: 4,
   },
   progressBar: {
     width: 200,
     height: 4,
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
     borderRadius: 2,
     overflow: 'hidden',
   },
   progressFill: {
+    width: 200,
     height: '100%',
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    backgroundColor: '#ffffff',
     borderRadius: 2,
   },
-
-  // Footer
   footer: {
     position: 'absolute',
-    bottom: 50,
+    bottom: 40,
     alignItems: 'center',
   },
   footerText: {
     fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.7)',
-    fontWeight: '500',
-    marginBottom: 4,
+    color: 'rgba(255, 255, 255, 0.6)',
+    fontWeight: '600',
+    marginBottom: 2,
   },
   versionText: {
     fontSize: 10,
-    color: 'rgba(255, 255, 255, 0.5)',
-    fontWeight: '400',
+    color: 'rgba(255, 255, 255, 0.4)',
   },
 });
 

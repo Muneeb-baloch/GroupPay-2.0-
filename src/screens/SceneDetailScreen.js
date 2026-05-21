@@ -68,7 +68,10 @@ const SceneDetailScreen = () => {
         </View>
         <View style={styles.participantInfo}>
           <Text style={styles.participantName}>{participant.name}</Text>
-          <Text style={styles.participantShare}>Share: Rs {participant.share}</Text>
+          <View style={styles.participantDetails}>
+            <Text style={styles.participantShare}>Share: Rs {participant.share}</Text>
+            <Text style={styles.participantPaid}>Paid: Rs {participant.paid}</Text>
+          </View>
         </View>
       </View>
       
@@ -112,18 +115,9 @@ const SceneDetailScreen = () => {
           <Text style={styles.title}>{scene.title}</Text>
           <Text style={styles.subtitle}>{scene.location}</Text>
         </View>
-        
-        <View style={styles.headerActions}>
-          <TouchableOpacity style={styles.headerAction} activeOpacity={0.7}>
-            <Ionicons name="share-outline" size={20} color="#64748b" />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.moreButton} activeOpacity={0.7}>
-            <Ionicons name="ellipsis-horizontal" size={20} color="#64748b" />
-          </TouchableOpacity>
-        </View>
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         {/* Compact Scene Summary Card - No duplications */}
         <View style={styles.summaryCard}>
           <View style={styles.summaryHeader}>
@@ -183,7 +177,7 @@ const SceneDetailScreen = () => {
           </View>
         </View>
 
-        {/* Participants */}
+        {/* Participants - Now the final section */}
         <View style={styles.participantsSection}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Participants ({participants.length})</Text>
@@ -195,44 +189,6 @@ const SceneDetailScreen = () => {
           <View style={styles.participantsList}>
             {participants.map(renderParticipant)}
           </View>
-        </View>
-
-        {/* Settlement Summary - Enhanced with detailed breakdown */}
-        <View style={styles.settlementCard}>
-          <Text style={styles.settlementTitle}>Settlement Summary</Text>
-          
-          {/* Detailed breakdown like the reference */}
-          <View style={styles.settlementBreakdown}>
-            <View style={styles.breakdownRow}>
-              <Text style={styles.breakdownLabel}>Total Bill:</Text>
-              <Text style={styles.breakdownValue}>Rs {scene.totalBill}</Text>
-            </View>
-            
-            <View style={styles.breakdownRow}>
-              <Text style={styles.breakdownLabel}>Sharing Additional Costs:</Text>
-              <Text style={[styles.breakdownValue, { color: '#f59e0b' }]}>Rs 0</Text>
-            </View>
-            
-            <View style={styles.breakdownRow}>
-              <Text style={styles.breakdownLabel}>Shareable Amount:</Text>
-              <Text style={styles.breakdownValue}>Rs {scene.totalBill}</Text>
-            </View>
-            
-            <View style={styles.breakdownRow}>
-              <Text style={styles.breakdownLabel}>Per Person Share ({participants.length}):</Text>
-              <Text style={styles.breakdownValue}>Rs {scene.yourShare}</Text>
-            </View>
-            
-            <View style={[styles.breakdownRow, styles.totalRow]}>
-              <Text style={styles.totalLabel}>Total Paid:</Text>
-              <Text style={styles.totalPaidValue}>Rs {scene.totalBill}</Text>
-            </View>
-          </View>
-          
-          <TouchableOpacity style={styles.settleButton} activeOpacity={0.8}>
-            <Text style={styles.settleButtonText}>Settle All Balances</Text>
-            <Ionicons name="arrow-forward" size={16} color="#ffffff" />
-          </TouchableOpacity>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -274,27 +230,15 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginTop: 4,
   },
-  headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  headerAction: {
-    padding: 8,
-    borderRadius: 8,
-    backgroundColor: '#f1f5f9',
-  },
-  moreButton: {
-    padding: 8,
-    borderRadius: 8,
-    backgroundColor: '#f1f5f9',
-  },
 
   // Content
   content: {
     flex: 1,
+  },
+  scrollContent: {
     paddingHorizontal: 20,
     paddingTop: 20,
+    paddingBottom: 100, // Same as other screens - Account for bottom tab
   },
 
   // Summary Card - Much more compact, no duplications
@@ -398,9 +342,9 @@ const styles = StyleSheet.create({
     lineHeight: 18, // Reduced from 20
   },
 
-  // Participants Section - Now standalone with proper bottom spacing
+  // Participants Section - Now the final section with proper bottom spacing
   participantsSection: {
-    marginBottom: 60, // Added proper bottom spacing since it's now the last element
+    marginBottom: 0, // Removed margin since ScrollView contentContainerStyle handles bottom spacing
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -460,12 +404,20 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     color: '#0f172a',
-    marginBottom: 2,
+    marginBottom: 4,
+  },
+  participantDetails: {
+    gap: 2,
   },
   participantShare: {
     fontSize: 13,
     color: '#64748b',
     fontWeight: '500',
+  },
+  participantPaid: {
+    fontSize: 13,
+    color: '#06b6d4',
+    fontWeight: '600',
   },
   participantRight: {
     alignItems: 'flex-end',
@@ -483,83 +435,6 @@ const styles = StyleSheet.create({
   statusText: {
     fontSize: 11,
     fontWeight: '600',
-  },
-
-  // Settlement Card - Enhanced with detailed breakdown and proper spacing
-  settlementCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 60, // Added proper bottom spacing
-    shadowColor: '#06b6d4',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    elevation: 4,
-    borderWidth: 1,
-    borderColor: '#e0f2fe',
-  },
-  settlementTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#0f172a',
-    marginBottom: 20,
-  },
-  settlementBreakdown: {
-    marginBottom: 24,
-  },
-  breakdownRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 8,
-  },
-  breakdownLabel: {
-    fontSize: 14,
-    color: '#64748b',
-    fontWeight: '500',
-    flex: 1,
-  },
-  breakdownValue: {
-    fontSize: 14,
-    color: '#0f172a',
-    fontWeight: '600',
-  },
-  totalRow: {
-    borderTopWidth: 1,
-    borderTopColor: '#f1f5f9',
-    paddingTop: 12,
-    marginTop: 8,
-  },
-  totalLabel: {
-    fontSize: 16,
-    color: '#0f172a',
-    fontWeight: '700',
-  },
-  totalPaidValue: {
-    fontSize: 16,
-    color: '#10b981',
-    fontWeight: '800',
-  },
-  settleButton: {
-    backgroundColor: '#06b6d4',
-    borderRadius: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    shadowColor: '#06b6d4',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  settleButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#ffffff',
   },
 });
 

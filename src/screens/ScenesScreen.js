@@ -9,15 +9,17 @@ import {
   RefreshControl,
   StatusBar,
   Animated,
-  Dimensions
+  Dimensions,
+  Alert
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
+import { Swipeable, GestureHandlerRootView } from 'react-native-gesture-handler';
 
 const { width } = Dimensions.get('window');
 
-const ScenesScreen = () => {
+const ScenesScreen = ({ route }) => {
   const navigation = useNavigation();
   const [searchText, setSearchText] = useState('');
   const [selectedFilter, setSelectedFilter] = useState('All');
@@ -27,7 +29,7 @@ const ScenesScreen = () => {
   const searchOpacity = React.useRef(new Animated.Value(0)).current;
 
   // Sample scenes data - simplified (all paid)
-  const [scenes] = useState([
+  const [scenes, setScenes] = useState([
     {
       id: 1,
       title: 'Tummy Cafe',
@@ -79,6 +81,14 @@ const ScenesScreen = () => {
       yourShare: 265
     }
   ]);
+
+  React.useEffect(() => {
+    if (route?.params?.newScene) {
+      const newScene = route.params.newScene;
+      setScenes(prevScenes => [newScene, ...prevScenes]);
+      navigation.setParams({ newScene: undefined });
+    }
+  }, [route?.params?.newScene, navigation]);
 
   const handleSearchPress = () => {
     if (!isSearchExpanded) {
@@ -147,98 +157,157 @@ const ScenesScreen = () => {
   };
 
   const handleCreateScene = () => {
-    console.log('Create new scene');
+    navigation.navigate('CreateScene');
+  };
+
+  const handleEditScene = (scene) => {
+    Alert.alert(
+      'Edit Scene',
+      `Edit "${scene.title}"?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Edit', onPress: () => console.log('Edit scene:', scene.id) }
+      ]
+    );
+  };
+
+  const handleDeleteScene = (scene) => {
+    Alert.alert(
+      'Delete Scene',
+      `Are you sure you want to delete "${scene.title}"?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            setScenes(prevScenes => prevScenes.filter(s => s.id !== scene.id));
+          }
+        }
+      ]
+    );
+  };
+
+  const renderRightActions = (scene) => {
+    return (
+      <View style={styles.rightActionsContainer}>
+        <TouchableOpacity
+          style={[styles.actionButton, styles.editButton]}
+          onPress={() => handleEditScene(scene)}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="pencil" size={20} color="#ffffff" />
+          <Text style={styles.actionButtonText}>Edit</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.actionButton, styles.deleteButton]}
+          onPress={() => handleDeleteScene(scene)}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="trash" size={20} color="#ffffff" />
+          <Text style={styles.actionButtonText}>Delete</Text>
+        </TouchableOpacity>
+      </View>
+    );
   };
 
   const filteredScenes = scenes.filter(scene => {
     const matchesSearch = scene.title.toLowerCase().includes(searchText.toLowerCase()) ||
-                         scene.description.toLowerCase().includes(searchText.toLowerCase()) ||
-                         scene.location.toLowerCase().includes(searchText.toLowerCase());
-    
+      scene.description.toLowerCase().includes(searchText.toLowerCase()) ||
+      scene.location.toLowerCase().includes(searchText.toLowerCase());
+
     if (selectedFilter === 'All') return matchesSearch;
     if (selectedFilter === 'Recent') {
       const sceneDate = new Date(scene.date);
-      const weekAgo = new Date(Date.now() - 7*24*60*60*1000);
+      const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
       return matchesSearch && sceneDate > weekAgo;
     }
     return matchesSearch;
   });
 
   const renderSceneCard = ({ item, index }) => (
-    <TouchableOpacity 
-      style={[styles.sceneCard, { marginTop: index === 0 ? 0 : 12 }]}
-      onPress={() => handleScenePress(item)}
-      activeOpacity={0.7}
-    >
-      {/* Card Header */}
-      <View style={styles.cardHeader}>
-        <View style={styles.titleSection}>
-          <Text style={styles.sceneTitle}>{item.title}</Text>
-          <View style={styles.groupBadge}>
-            <Ionicons name="people" size={12} color="#06b6d4" />
-            <Text style={styles.groupText}>{item.group}</Text>
-          </View>
-        </View>
-        <View style={styles.amountSection}>
-          <Text style={styles.totalAmount}>Rs {item.totalBill.toLocaleString()}</Text>
-          <Text style={styles.totalLabel}>Total</Text>
-        </View>
-      </View>
-
-      {/* Location and Description */}
-      <View style={styles.locationRow}>
-        <Ionicons name="location" size={14} color="#64748b" />
-        <Text style={styles.locationText}>{item.location}</Text>
-      </View>
-      <Text style={styles.description}>{item.description}</Text>
-
-      {/* Card Footer */}
-      <View style={styles.cardFooter}>
-        <View style={styles.dateTimeContainer}>
-          <View style={styles.dateTimeRow}>
-            <Ionicons name="calendar-outline" size={14} color="#64748b" />
-            <Text style={styles.dateTimeText}>{item.date}</Text>
-          </View>
-          <View style={styles.dateTimeRow}>
-            <Ionicons name="time-outline" size={14} color="#64748b" />
-            <Text style={styles.dateTimeText}>{item.time}</Text>
-          </View>
-        </View>
-
-        <View style={styles.participantsContainer}>
-          <View style={styles.avatarStack}>
-            {item.participantAvatars.slice(0, 3).map((avatar, index) => (
-              <View 
-                key={index}
-                style={[
-                  styles.avatar,
-                  { backgroundColor: avatar.color },
-                  index > 0 && styles.avatarOverlap
-                ]}
-              >
-                <Text style={styles.avatarText}>{avatar.name}</Text>
+    <GestureHandlerRootView>
+      <Swipeable
+        renderRightActions={() => renderRightActions(item)}
+        rightThreshold={40}
+      >
+        <TouchableOpacity
+          style={styles.sceneCard}
+          onPress={() => handleScenePress(item)}
+          activeOpacity={0.7}
+        >
+          {/* Card Header */}
+          <View style={styles.cardHeader}>
+            <View style={styles.titleSection}>
+              <Text style={styles.sceneTitle}>{item.title}</Text>
+              <View style={styles.groupBadge}>
+                <Ionicons name="people" size={12} color="#06b6d4" />
+                <Text style={styles.groupText}>{item.group}</Text>
               </View>
-            ))}
-            {item.participants > 3 && (
-              <View style={[styles.avatar, styles.avatarMore, styles.avatarOverlap]}>
-                <Text style={styles.avatarMoreText}>+{item.participants - 3}</Text>
-              </View>
-            )}
+            </View>
+            <View style={styles.amountSection}>
+              <Text style={styles.totalAmount}>Rs {item.totalBill.toLocaleString()}</Text>
+              <Text style={styles.totalLabel}>Total</Text>
+            </View>
           </View>
-          <Text style={styles.participantCount}>
-            {item.participants} {item.participants === 1 ? 'person' : 'people'}
-          </Text>
-        </View>
-      </View>
 
-      {/* Your Share */}
-      <View style={styles.yourShareContainer}>
-        <Text style={styles.yourShareLabel}>Your share: </Text>
-        <Text style={styles.yourShareAmount}>
-          Rs {item.yourShare}
-        </Text>
-      </View>
-    </TouchableOpacity>
+          {/* Location and Description */}
+          <View style={styles.locationRow}>
+            <Ionicons name="location" size={14} color="#64748b" />
+            <Text style={styles.locationText}>{item.location}</Text>
+          </View>
+          <Text style={styles.description}>{item.description}</Text>
+
+          {/* Card Footer */}
+          <View style={styles.cardFooter}>
+            <View style={styles.dateTimeContainer}>
+              <View style={styles.dateTimeRow}>
+                <Ionicons name="calendar-outline" size={14} color="#64748b" />
+                <Text style={styles.dateTimeText}>{item.date}</Text>
+              </View>
+              <View style={styles.dateTimeRow}>
+                <Ionicons name="time-outline" size={14} color="#64748b" />
+                <Text style={styles.dateTimeText}>{item.time}</Text>
+              </View>
+            </View>
+
+            <View style={styles.participantsContainer}>
+              <View style={styles.avatarStack}>
+                {item.participantAvatars.slice(0, 3).map((avatar, index) => (
+                  <View
+                    key={index}
+                    style={[
+                      styles.avatar,
+                      { backgroundColor: avatar.color },
+                      index > 0 && styles.avatarOverlap
+                    ]}
+                  >
+                    <Text style={styles.avatarText}>{avatar.name}</Text>
+                  </View>
+                ))}
+                {item.participants > 3 && (
+                  <View style={[styles.avatar, styles.avatarMore, styles.avatarOverlap]}>
+                    <Text style={styles.avatarMoreText}>+{item.participants - 3}</Text>
+                  </View>
+                )}
+              </View>
+              <Text style={styles.participantCount}>
+                {item.participants} {item.participants === 1 ? 'person' : 'people'}
+              </Text>
+            </View>
+          </View>
+
+          {/* Your Share */}
+          <View style={styles.yourShareContainer}>
+            <Text style={styles.yourShareLabel}>Your share: </Text>
+            <Text style={styles.yourShareAmount}>
+              Rs {item.yourShare}
+            </Text>
+          </View>
+        </TouchableOpacity>
+      </Swipeable>
+    </GestureHandlerRootView>
   );
 
   const renderHeader = () => (
@@ -252,7 +321,7 @@ const ScenesScreen = () => {
         <View style={styles.headerActions}>
           <Animated.View style={[styles.headerSearchContainer, { width: searchWidth }]}>
             {!isSearchExpanded ? (
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.searchIconButton}
                 onPress={handleSearchPress}
                 activeOpacity={0.6}
@@ -287,8 +356,8 @@ const ScenesScreen = () => {
               </>
             )}
           </Animated.View>
-          <TouchableOpacity 
-            style={styles.createButton} 
+          <TouchableOpacity
+            style={styles.createButton}
             activeOpacity={0.8}
             onPress={handleCreateScene}
           >
@@ -301,16 +370,16 @@ const ScenesScreen = () => {
       {/* Filter Chips */}
       <View style={styles.filterSection}>
         <View style={styles.filterContainer}>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={[styles.filterChip, selectedFilter === 'All' && styles.activeFilterChip]}
             onPress={() => setSelectedFilter('All')}
             activeOpacity={0.7}
           >
             <View style={styles.chipContent}>
-              <Ionicons 
-                name="apps" 
-                size={16} 
-                color={selectedFilter === 'All' ? '#ffffff' : '#64748b'} 
+              <Ionicons
+                name="apps"
+                size={16}
+                color={selectedFilter === 'All' ? '#ffffff' : '#64748b'}
               />
               <Text style={[styles.chipText, selectedFilter === 'All' && styles.activeChipText]}>
                 All
@@ -323,23 +392,23 @@ const ScenesScreen = () => {
             </View>
           </TouchableOpacity>
 
-          <TouchableOpacity 
+          <TouchableOpacity
             style={[styles.filterChip, selectedFilter === 'Recent' && styles.activeFilterChip]}
             onPress={() => setSelectedFilter('Recent')}
             activeOpacity={0.7}
           >
             <View style={styles.chipContent}>
-              <Ionicons 
-                name="time" 
-                size={16} 
-                color={selectedFilter === 'Recent' ? '#ffffff' : '#64748b'} 
+              <Ionicons
+                name="time"
+                size={16}
+                color={selectedFilter === 'Recent' ? '#ffffff' : '#64748b'}
               />
               <Text style={[styles.chipText, selectedFilter === 'Recent' && styles.activeChipText]}>
                 Recent
               </Text>
               <View style={[styles.chipBadge, selectedFilter === 'Recent' && styles.activeChipBadge]}>
                 <Text style={[styles.chipBadgeText, selectedFilter === 'Recent' && styles.activeChipBadgeText]}>
-                  {scenes.filter(s => new Date(s.date) > new Date(Date.now() - 7*24*60*60*1000)).length}
+                  {scenes.filter(s => new Date(s.date) > new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)).length}
                 </Text>
               </View>
             </View>
@@ -347,6 +416,10 @@ const ScenesScreen = () => {
         </View>
       </View>
     </View>
+  );
+
+  const renderFooter = () => (
+    <View style={styles.listFooter} />
   );
 
   const renderEmptyState = () => (
@@ -361,24 +434,19 @@ const ScenesScreen = () => {
         {searchText ? 'No matching scenes' : 'No expense scenes yet'}
       </Text>
       <Text style={styles.emptySubtitle}>
-        {searchText 
-          ? 'Try adjusting your search terms or filters' 
+        {searchText
+          ? 'Try adjusting your search terms or filters'
           : 'Create your first shared expense scene to get started'
         }
       </Text>
       {!searchText && (
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.emptyButton}
           onPress={handleCreateScene}
           activeOpacity={0.8}
         >
-          <LinearGradient
-            colors={['#06b6d4', '#0891b2']}
-            style={styles.emptyButtonGradient}
-          >
-            <Ionicons name="add-circle" size={20} color="#ffffff" />
-            <Text style={styles.emptyButtonText}>Create First Scene</Text>
-          </LinearGradient>
+          <Ionicons name="add-circle" size={20} color="#ffffff" />
+          <Text style={styles.emptyButtonText}>Create First Scene</Text>
         </TouchableOpacity>
       )}
     </View>
@@ -387,7 +455,7 @@ const ScenesScreen = () => {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#f8fffe" />
-      
+
       <FlatList
         data={filteredScenes}
         renderItem={renderSceneCard}
@@ -419,7 +487,7 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     paddingHorizontal: 20,
     paddingTop: 12,
-    paddingBottom: 100,
+    paddingBottom: 100, // Same as GroupsScreen - Account for bottom tab
   },
 
   // Header Styles - Following GroupsScreen pattern
@@ -617,7 +685,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
     borderRadius: 16,
     padding: 20,
-    marginBottom: 12,
+    marginBottom: 16, // Increased from 12 to 16 for better spacing between cards
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.08,
@@ -626,7 +694,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#f1f5f9',
   },
-  
+
   // Card Header
   cardHeader: {
     flexDirection: 'row',
@@ -826,6 +894,40 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#ffffff',
+  },
+
+  // Swipe Actions
+  rightActionsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 12, // Match the card margin
+  },
+  actionButton: {
+    width: 80,
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  editButton: {
+    backgroundColor: '#f59e0b',
+    borderTopLeftRadius: 16,
+    borderBottomLeftRadius: 16,
+  },
+  deleteButton: {
+    backgroundColor: '#ef4444',
+    borderTopRightRadius: 16,
+    borderBottomRightRadius: 16,
+  },
+  actionButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#ffffff',
+  },
+
+  // List Footer for proper bottom spacing
+  listFooter: {
+    height: 200, // Increased from 140 to 200 for more generous spacing
   },
 });
 

@@ -40,7 +40,7 @@ A React Native mobile application for managing group payments, deposits, and exp
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/yourusername/GroupPay.git
+   git clone https://github.com/Muneeb-baloch/GroupPay.git
    cd GroupPay
    ```
 
@@ -160,7 +160,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## 👨‍💻 Author
 
 **Muneeb Baloch**
-- GitHub: [@Muneeb-baloch](https://github.com/yourusername)
+- GitHub: [@Muneeb-baloch](https://github.com/Muneeb-baloch)
 
 ## 🙏 Acknowledgments
 

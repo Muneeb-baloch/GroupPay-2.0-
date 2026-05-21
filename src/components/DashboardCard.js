@@ -71,6 +71,10 @@ const DashboardCard = () => {
     }
   };
 
+  const handleCreateScene = () => {
+    navigation.navigate('Scenes', { screen: 'CreateScene' });
+  };
+
   const toggleGroupSelection = (groupId) => {
     if (groupId === 'all') {
       setSelectedGroups(['all']);
@@ -222,11 +226,15 @@ const DashboardCard = () => {
                 <Text style={dashboardStyles.actionButtonText}>Deposit</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity style={dashboardStyles.actionButton}>
+              <TouchableOpacity 
+                style={dashboardStyles.actionButton}
+                onPress={handleCreateScene}
+                activeOpacity={0.8}
+              >
                 <View style={dashboardStyles.actionButtonCircle}>
-                  <Ionicons name="arrow-down" size={24} color="#ffffff" />
+                  <Ionicons name="arrow-up" size={24} color="#ffffff" />
                 </View>
-                <Text style={dashboardStyles.actionButtonText}>Request</Text>
+                <Text style={dashboardStyles.actionButtonText}>Scenes</Text>
               </TouchableOpacity>
 
               <TouchableOpacity style={dashboardStyles.actionButton}>
