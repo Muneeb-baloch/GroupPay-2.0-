@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, Dimensions, Alert, Modal, FlatList, Pressable } from 'react-native';
+import { View, Text, TouchableOpacity, Dimensions, Alert, Modal, FlatList, Pressable, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
@@ -17,6 +17,7 @@ const DashboardCard = () => {
   const fullName = user?.fullname || user?.full_name || user?.name || user?.email?.split('@')[0] || 'User';
   const firstName = fullName.split(' ')[0];
   const profileInitial = firstName.charAt(0).toUpperCase();
+  const profilePicUrl = user?.profile_picture_url || null;
 
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -193,15 +194,26 @@ const DashboardCard = () => {
         >
           {/* Header Section */}
           <View style={dashboardStyles.cardHeader}>
-            <View style={dashboardStyles.profileContainer}>
+            <TouchableOpacity
+              style={dashboardStyles.profileContainer}
+              onPress={() => navigation.navigate('Profile')}
+              activeOpacity={0.8}
+            >
               <View style={dashboardStyles.profileImage}>
-                <Text style={dashboardStyles.profileInitial}>{profileInitial}</Text>
+                {profilePicUrl ? (
+                  <Image
+                    source={{ uri: profilePicUrl }}
+                    style={dashboardStyles.profileImagePhoto}
+                  />
+                ) : (
+                  <Text style={dashboardStyles.profileInitial}>{profileInitial}</Text>
+                )}
               </View>
               <View>
                 <Text style={dashboardStyles.profileGreeting}>{getGreeting()}</Text>
                 <Text style={dashboardStyles.profileName}>{firstName}</Text>
               </View>
-            </View>
+            </TouchableOpacity>
             <TouchableOpacity style={dashboardStyles.notificationButton}>
               <Ionicons name="notifications-outline" size={24} color="#ffffff" />
               <View style={dashboardStyles.notificationBadge}>

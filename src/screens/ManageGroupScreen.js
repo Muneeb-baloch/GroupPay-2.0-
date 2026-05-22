@@ -1,9 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  SafeAreaView,
   StatusBar,
   TouchableOpacity,
   TextInput,
@@ -11,112 +10,125 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
-  ScrollView
+  ScrollView,
+  ActivityIndicator,
+  Animated,
+  Easing,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useAuth } from '../context/AuthContext';
+import { groupsService } from '../services/groupsService';
+import { invitesService } from '../services/invitesService';
+import { formatDate, getInitials } from '../utils/helpers';
 
 const ManageGroupScreen = ({ navigation, route }) => {
-  const { groupName = 'Chichory', groupData } = route?.params || {};
+  const { groupName = 'Group', groupData } = route?.params || {};
+  const { token, user } = useAuth();
+  const groupId = route?.params?.groupId || groupData?.id;
+
   const [searchEmail, setSearchEmail] = useState('');
   const [loading, setLoading] = useState(false);
+  const [fetchingMembers, setFetchingMembers] = useState(true);
+  const [members, setMembers] = useState([]);
+  const [pendingInvites, setPendingInvites] = useState([]);
 
-  // Sample current members data
-  const [members, setMembers] = useState([
-    {
-      id: 1,
-      name: 'Muneeb ur Rehman',
-      email: 'muneebbaloch1999@gmail.com',
-      role: 'admin',
-      isYou: true,
-      joinedDate: '2026-01-15',
-      avatar: 'MU'
-    },
-    {
-      id: 2,
-      name: 'Ahmad Hassan',
-      email: 'ahmad.hassan@gmail.com',
-      role: 'member',
-      isYou: false,
-      joinedDate: '2026-02-10',
-      avatar: 'AH'
-    },
-    {
-      id: 3,
-      name: 'Sarah Khan',
-      email: 'sarah.khan@gmail.com',
-      role: 'member',
-      isYou: false,
-      joinedDate: '2026-03-05',
-      avatar: 'SK'
-    }
-  ]);
+  // Spinner for send invite button
+  const spinValue = React.useRef(new Animated.Value(0)).current;
+  const spinAnim = React.useRef(null);
 
-  const [pendingInvites, setPendingInvites] = useState([
-    {
-      id: 1,
-      email: 'john.doe@gmail.com',
-      invitedDate: '2026-04-10',
-      status: 'pending'
-    }
-  ]);
-
-  const validateEmail = (email) => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email);
+  const startSpinner = () => {
+    spinAnim.current = Animated.loop(
+      Animated.timing(spinValue, { toValue: 1, duration: 900, easing: Easing.linear, useNativeDriver: true })
+    );
+    spinAnim.current.start();
   };
+
+  const stopSpinner = () => {
+    spinAnim.current?.stop();
+    spinValue.setValue(0);
+  };
+
+  const spin = spinValue.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
+
+  // Fetch group members from API
+  const fetchGroupData = useCallback(async () => {
+    if (!token || !groupId) return;
+    setFetchingMembers(true);
+    try {
+      const data = await groupsService.getGroup(token, groupId);
+      const raw = data?.data || data;
+      const participants = raw?.participants || raw?.members || [];
+      setMembers(participants.map(p => ({
+        id: p.person_id || p.id,
+        name: p.person?.fullname || p.person?.username || p.name || 'Unknown',
+        email: p.person?.email || p.email || '',
+        role: p.status === 'ACTIVE' ? (p.is_admin ? 'admin' : 'member') : 'member',
+        isYou: (p.person_id || p.id) === user?.person_id,
+        joinedDate: p.joined_at || p.created_at,
+        avatar: getInitials(p.person?.fullname || p.person?.username || 'U'),
+        color: groupData?.color || '#06b6d4',
+      })));
+    } catch (error) {
+      console.log('Fetch group members error:', error.message);
+    } finally {
+      setFetchingMembers(false);
+    }
+  }, [token, groupId, user, groupData]);
+
+  useEffect(() => {
+    fetchGroupData();
+  }, [fetchGroupData]);
+
+  const validateEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
   const handleInviteUser = async () => {
     if (!searchEmail.trim()) {
       Alert.alert('Error', 'Please enter an email address');
       return;
     }
-
     if (!validateEmail(searchEmail)) {
       Alert.alert('Error', 'Please enter a valid email address');
       return;
     }
 
-    // Check if user is already a member
-    const existingMember = members.find(member => 
-      member.email.toLowerCase() === searchEmail.toLowerCase()
-    );
-    
-    if (existingMember) {
+    const alreadyMember = members.find(m => m.email.toLowerCase() === searchEmail.toLowerCase());
+    if (alreadyMember) {
       Alert.alert('Error', 'This user is already a member of the group');
       return;
     }
 
-    // Check if invite already sent
-    const existingInvite = pendingInvites.find(invite => 
-      invite.email.toLowerCase() === searchEmail.toLowerCase()
-    );
-    
-    if (existingInvite) {
+    const alreadyInvited = pendingInvites.find(i => i.email.toLowerCase() === searchEmail.toLowerCase());
+    if (alreadyInvited) {
       Alert.alert('Error', 'Invitation already sent to this email');
       return;
     }
 
     setLoading(true);
+    startSpinner();
 
-    // Simulate API call
-    setTimeout(() => {
+    try {
+      // Note: API needs receiver_id (integer), but we only have email here.
+      // For now we send the invite with email as a placeholder until user search API is available.
+      // TODO: Add user search by email endpoint when available.
+      await new Promise(resolve => setTimeout(resolve, 800)); // placeholder
+
       const newInvite = {
         id: Date.now(),
         email: searchEmail.toLowerCase(),
         invitedDate: new Date().toISOString(),
-        status: 'pending'
+        status: 'pending',
       };
-
       setPendingInvites(prev => [newInvite, ...prev]);
       setSearchEmail('');
+      stopSpinner();
       setLoading(false);
-
-      Alert.alert(
-        'Invitation Sent!',
-        `An invitation has been sent to ${searchEmail}`,
-        [{ text: 'OK' }]
-      );
-    }, 1500);
+      Alert.alert('Invitation Sent!', `An invitation has been sent to ${searchEmail}`);
+    } catch (error) {
+      stopSpinner();
+      setLoading(false);
+      Alert.alert('Error', error.message || 'Could not send invitation. Please try again.');
+    }
   };
 
   const handleRemoveMember = (memberId) => {
@@ -162,7 +174,7 @@ const ManageGroupScreen = ({ navigation, route }) => {
   const renderMemberItem = ({ item }) => (
     <View style={styles.memberCard}>
       <View style={styles.memberInfo}>
-        <View style={styles.memberAvatar}>
+        <View style={[styles.memberAvatar, { backgroundColor: item.color || '#06b6d4' }]}>
           <Text style={styles.avatarText}>{item.avatar}</Text>
         </View>
         <View style={styles.memberDetails}>
@@ -178,11 +190,7 @@ const ManageGroupScreen = ({ navigation, route }) => {
           </View>
           <Text style={styles.memberEmail}>{item.email}</Text>
           <Text style={styles.memberJoined}>
-            Joined {new Date(item.joinedDate).toLocaleDateString('en-US', { 
-              month: 'short', 
-              day: 'numeric', 
-              year: 'numeric' 
-            })}
+            Joined {formatDate(item.joinedDate)}
           </Text>
         </View>
       </View>
@@ -227,7 +235,7 @@ const ManageGroupScreen = ({ navigation, route }) => {
   );
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['bottom']}>
       <StatusBar barStyle="dark-content" backgroundColor="#f8fffe" />
       
       {/* Header */}
@@ -280,13 +288,17 @@ const ManageGroupScreen = ({ navigation, route }) => {
               </View>
             </View>
             
-            <FlatList
-              data={members}
-              renderItem={renderMemberItem}
-              keyExtractor={(item) => item.id.toString()}
-              scrollEnabled={false}
-              ItemSeparatorComponent={() => <View style={styles.memberSeparator} />}
-            />
+            {fetchingMembers ? (
+              <ActivityIndicator color="#06b6d4" style={{ marginVertical: 20 }} />
+            ) : (
+              <FlatList
+                data={members}
+                renderItem={renderMemberItem}
+                keyExtractor={(item, index) => (item?.id?.toString() || index.toString())}
+                scrollEnabled={false}
+                ItemSeparatorComponent={() => <View style={styles.memberSeparator} />}
+              />
+            )}
           </View>
 
           {/* Pending Invites Section */}
@@ -351,7 +363,7 @@ const ManageGroupScreen = ({ navigation, route }) => {
               >
                 {loading ? (
                   <View style={styles.loadingContainer}>
-                    <View style={styles.loadingSpinner} />
+                    <Animated.View style={[styles.loadingSpinner, { transform: [{ rotate: spin }] }]} />
                     <Text style={styles.inviteButtonText}>Sending...</Text>
                   </View>
                 ) : (

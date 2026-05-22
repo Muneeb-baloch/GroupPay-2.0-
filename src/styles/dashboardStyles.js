@@ -41,6 +41,12 @@ export const dashboardStyles = StyleSheet.create({
     marginRight: 12,
     borderWidth: 2,
     borderColor: 'rgba(255, 255, 255, 0.3)',
+    overflow: 'hidden',
+  },
+  profileImagePhoto: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
   },
   profileInitial: {
     fontSize: 20,

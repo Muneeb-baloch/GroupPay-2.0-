@@ -8,6 +8,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import BottomTabNavigator from './src/navigation/BottomTabNavigator';
 import AuthNavigator from './src/navigation/AuthNavigator';
 import SplashScreen from './src/screens/SplashScreen';
+import ProfileScreen from './src/screens/ProfileScreen';
 import { AuthContext } from './src/context/AuthContext';
 import { appStyles } from './src/styles/appStyles';
 
@@ -50,6 +51,17 @@ export default function App() {
     }
   };
 
+  // Update user data in context and AsyncStorage (e.g. after profile update)
+  const updateUser = async (updatedFields) => {
+    try {
+      const updatedUser = { ...user, ...updatedFields };
+      await AsyncStorage.setItem('auth_user', JSON.stringify(updatedUser));
+      setUser(updatedUser);
+    } catch (error) {
+      console.log('Error updating user:', error);
+    }
+  };
+
   const logout = async () => {
     try {
       await AsyncStorage.removeItem('auth_token');
@@ -68,7 +80,7 @@ export default function App() {
   };
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, user, token, login, logout }}>
+    <AuthContext.Provider value={{ isAuthenticated, user, token, login, logout, updateUser }}>
       <SafeAreaProvider>
         <SafeAreaView style={appStyles.container} edges={['top']}>
           <StatusBar style="dark" backgroundColor="#f8fffe" />
@@ -77,7 +89,10 @@ export default function App() {
             <NavigationContainer>
               <Stack.Navigator screenOptions={{ headerShown: false }}>
                 {isAuthenticated ? (
-                  <Stack.Screen name="MainApp" component={BottomTabNavigator} />
+                  <>
+                    <Stack.Screen name="MainApp" component={BottomTabNavigator} />
+                    <Stack.Screen name="Profile" component={ProfileScreen} />
+                  </>
                 ) : (
                   <Stack.Screen name="Auth" component={AuthNavigator} />
                 )}

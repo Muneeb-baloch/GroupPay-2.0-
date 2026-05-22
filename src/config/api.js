@@ -19,6 +19,15 @@ export const API_ENDPOINTS = {
   updateGroup:         (id) => `${BASE_URL}/api/up/groups/${id}`,
   toggleGroupStar:     (id) => `${BASE_URL}/api/up/groups/${id}/star`,
   leaveGroup:          (id) => `${BASE_URL}/api/up/groups/${id}/leave`,
+  // Invites
+  invitesReceived:     `${BASE_URL}/api/up/invites/received`,
+  sendInvite:          `${BASE_URL}/api/up/invites`,
+  updateInviteStatus:  (id) => `${BASE_URL}/api/up/invites/${id}/status`,
+  // Transactions
+  transactions:        `${BASE_URL}/api/up/transactions`,
+  transactionSummary:  (groupId) => `${BASE_URL}/api/up/transactions/summary/${groupId}`,
+  // Files
+  fileUpload:          `${BASE_URL}/api/up/files/upload`,
 };
 
 // Generic API call helper

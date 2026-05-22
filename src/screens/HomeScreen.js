@@ -1,28 +1,37 @@
-import React, { useState, useCallback } from 'react';
-import { ScrollView, View, Text, FlatList, TouchableOpacity, Pressable } from 'react-native';
+import React, { useState, useCallback, useEffect } from 'react';
+import { ScrollView, View, Text, FlatList, TouchableOpacity, Pressable, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import DashboardCard from '../components/DashboardCard';
 import { homeStyles } from '../styles/homeStyles';
+import { groupsService } from '../services/groupsService';
+import { useAuth } from '../context/AuthContext';
+import { Alert } from 'react-native';
 
 const HomeScreen = () => {
   const navigation = useNavigation();
+  const { token } = useAuth();
+  const [favoriteGroups, setFavoriteGroups] = useState([]);
+  const [loadingFavorites, setLoadingFavorites] = useState(true);
 
-  const [favoriteGroups] = useState([
-    {
-      id: 2,
-      name: 'Chichory',
-      balance: -367.75,
-      color: '#8b5cf6',
-      members: 4,
-      memberInitials: ['MU', 'YU', 'AH', 'SK'],
-      lastActivity: '1 day ago',
-      status: 'active',
-      role: 'member',
-      isFavorite: true,
-      totalBalance: -367.75
-    }
-  ]);
+  // Fetch favorite groups — re-runs every time Home tab is focused
+  useFocusEffect(
+    useCallback(() => {
+      const fetchFavorites = async () => {
+        if (!token) return;
+        try {
+          const result = await groupsService.fetchGroups(token);
+          const starred = result.all.filter(g => g.isFavorite);
+          setFavoriteGroups(starred.slice(0, 1));
+        } catch (error) {
+          console.log('Fetch favorites error:', error.message);
+        } finally {
+          setLoadingFavorites(false);
+        }
+      };
+      fetchFavorites();
+    }, [token])
+  );
 
   // Recent scenes - 2 latest
   const recentScenes = [
@@ -72,6 +81,27 @@ const HomeScreen = () => {
     },
   ];
 
+  // Toggle favorite from HomeScreen
+  const toggleFavorite = useCallback(async (groupId) => {
+    const group = favoriteGroups.find(g => g.id === groupId);
+    if (!group) return;
+    const newStarred = !group.isFavorite;
+
+    // Optimistic update
+    setFavoriteGroups(prev =>
+      newStarred
+        ? prev.map(g => g.id === groupId ? { ...g, isFavorite: newStarred } : g)
+        : prev.filter(g => g.id !== groupId) // Remove from list if unstarred
+    );
+
+    try {
+      await groupsService.toggleStar(token, groupId, newStarred);
+    } catch (error) {
+      // Revert on failure
+      setFavoriteGroups(prev => [...prev, group]);
+    }
+  }, [favoriteGroups, token]);
+
   const handleGroupPress = useCallback((group) => {
     navigation.navigate('Groups', {
       screen: 'Transactions',
@@ -106,7 +136,26 @@ const HomeScreen = () => {
       manage: () => navigation.navigate('Groups', {
         screen: 'ManageGroup',
         params: { groupName: group.name, groupId: group.id, groupData: group }
-      })
+      }),
+      leave: () => Alert.alert(
+        'Leave Group',
+        `Are you sure you want to leave "${group.name}"?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Leave',
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                await groupsService.leaveGroup(token, group.id);
+                setFavoriteGroups(prev => prev.filter(g => g.id !== group.id));
+              } catch (error) {
+                Alert.alert('Error', error.message || 'Could not leave group.');
+              }
+            }
+          }
+        ]
+      )
     };
     actions[action]?.();
   }, [navigation]);
@@ -136,7 +185,7 @@ const HomeScreen = () => {
             <Text style={homeStyles.lastActivity}>{item.lastActivity}</Text>
           </View>
         </View>
-        <TouchableOpacity style={homeStyles.favoriteButton} activeOpacity={0.7}>
+        <TouchableOpacity style={homeStyles.favoriteButton} onPress={() => toggleFavorite(item.id)} activeOpacity={0.7}>
           <Ionicons name={item.isFavorite ? "star" : "star-outline"} size={18} color={item.isFavorite ? "#f59e0b" : "#9ca3af"} />
         </TouchableOpacity>
       </View>
@@ -181,17 +230,23 @@ const HomeScreen = () => {
           </View>
           <Text style={homeStyles.actionLabel}>Deposits</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={homeStyles.actionButton} onPress={() => handleGroupAction(item.role === 'admin' ? 'manage' : 'leave', item)} activeOpacity={0.7}>
-          <View style={[homeStyles.actionIconContainer, { backgroundColor: item.role === 'admin' ? '#f0f9ff' : '#fef2f2' }]}>
-            <Ionicons name={item.role === 'admin' ? 'people' : 'exit'} size={16} color={item.role === 'admin' ? '#06b6d4' : '#dc2626'} />
+        {item.role === 'admin' && (
+          <TouchableOpacity style={homeStyles.actionButton} onPress={() => handleGroupAction('manage', item)} activeOpacity={0.7}>
+            <View style={[homeStyles.actionIconContainer, { backgroundColor: '#f0f9ff' }]}>
+              <Ionicons name="people" size={16} color="#06b6d4" />
+            </View>
+            <Text style={[homeStyles.actionLabel, { color: '#06b6d4' }]}>Manage</Text>
+          </TouchableOpacity>
+        )}
+        <TouchableOpacity style={homeStyles.actionButton} onPress={() => handleGroupAction('leave', item)} activeOpacity={0.7}>
+          <View style={[homeStyles.actionIconContainer, { backgroundColor: '#fef2f2' }]}>
+            <Ionicons name="exit-outline" size={16} color="#dc2626" />
           </View>
-          <Text style={[homeStyles.actionLabel, item.role === 'admin' && { color: '#06b6d4' }, item.role !== 'admin' && { color: '#dc2626' }]}>
-            {item.role === 'admin' ? 'Manage' : 'Leave'}
-          </Text>
+          <Text style={[homeStyles.actionLabel, { color: '#dc2626' }]}>Leave</Text>
         </TouchableOpacity>
       </View>
     </Pressable>
-  ), [handleGroupPress, formatBalance, navigation, getStatusColor, handleGroupAction]);
+  ), [handleGroupPress, formatBalance, navigation, getStatusColor, handleGroupAction, toggleFavorite]);
 
   const renderFavoriteHeader = useCallback(() => (
     <View style={homeStyles.sectionHeader}>
@@ -226,14 +281,30 @@ const HomeScreen = () => {
       {/* Favorite Groups Section */}
       <View style={homeStyles.section}>
         {renderFavoriteHeader()}
-        <FlatList
-          data={favoriteGroups.slice(0, 1)}
-          renderItem={renderFavoriteGroup}
-          keyExtractor={(item) => item.id.toString()}
-          scrollEnabled={false}
-          ListEmptyComponent={renderEmptyFavorites}
-          showsVerticalScrollIndicator={false}
-        />
+        {loadingFavorites ? (
+          <View style={homeStyles.skeletonCard}>
+            <View style={homeStyles.skeletonRow}>
+              <View style={homeStyles.skeletonIndicator} />
+              <View style={homeStyles.skeletonTitle} />
+              <View style={homeStyles.skeletonBadge} />
+            </View>
+            <View style={homeStyles.skeletonBalance} />
+            <View style={homeStyles.skeletonActions}>
+              <View style={homeStyles.skeletonAction} />
+              <View style={homeStyles.skeletonAction} />
+              <View style={homeStyles.skeletonAction} />
+            </View>
+          </View>
+        ) : (
+          <FlatList
+            data={favoriteGroups.slice(0, 1)}
+            renderItem={renderFavoriteGroup}
+            keyExtractor={(item) => item.id.toString()}
+            scrollEnabled={false}
+            ListEmptyComponent={renderEmptyFavorites}
+            showsVerticalScrollIndicator={false}
+          />
+        )}
       </View>
 
       {/* Recent Scenes Section */}

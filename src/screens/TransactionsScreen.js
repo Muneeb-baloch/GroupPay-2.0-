@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { 
   View, 
   Text, 
@@ -14,135 +14,69 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import { transactionsService } from '../services/transactionsService';
+import { useAuth } from '../context/AuthContext';
+import { formatDate } from '../utils/helpers';
 
 const TransactionsScreen = ({ route }) => {
   const navigation = useNavigation();
-  const { groupName = 'Chichory', groupId, groupData } = route?.params || {};
+  const { token } = useAuth();
+  const { groupName = 'Group', groupId, groupData } = route?.params || {};
   const [refreshing, setRefreshing] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [selectedFilter, setSelectedFilter] = useState('all');
-  const [dateFilter, setDateFilter] = useState('all'); // New date filter state
+  const [dateFilter, setDateFilter] = useState('all');
+  const [summary, setSummary] = useState(null);
 
-  // Sample transaction data with more realistic structure - filtered by group
-  const [transactions] = useState([
-    {
-      id: 1,
-      name: 'Muneeb ur Rehman',
-      type: 'expense',
-      category: 'Food & Dining',
-      description: 'Dinner at Tummy Cafe',
-      amount: 231.00,
-      date: '2026-05-13T12:11:00Z',
-      status: 'completed',
-      participants: ['MU', 'AH'],
-      splitAmount: 115.50,
-      icon: 'restaurant',
-      color: '#f59e0b',
-      groupId: groupId || 1,
-      receipt: 'https://images.unsplash.com/photo-1563013544-824ae1b704d3?w=400&h=800&fit=crop'
-    },
-    {
-      id: 2,
-      name: 'Ahmad Hassan',
-      type: 'payment',
-      category: 'Settlement',
-      description: 'Payment received',
-      amount: 150.00,
-      date: '2026-05-12T09:30:00Z',
-      status: 'completed',
-      participants: ['AH'],
-      splitAmount: 150.00,
-      icon: 'card',
-      color: '#10b981',
-      groupId: groupId || 1,
-      receipt: 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=400&h=800&fit=crop'
-    },
-    {
-      id: 3,
-      name: 'Sarah Khan',
-      type: 'expense',
-      category: 'Transportation',
-      description: 'Uber ride to mall',
-      amount: 45.75,
-      date: '2026-05-11T16:45:00Z',
-      status: 'pending',
-      participants: ['SK', 'MU', 'AH'],
-      splitAmount: 15.25,
-      icon: 'car',
-      color: '#8b5cf6',
-      groupId: groupId || 1,
-      receipt: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=400&h=800&fit=crop'
-    },
-    {
-      id: 4,
-      name: 'Muneeb ur Rehman',
-      type: 'expense',
-      category: 'Entertainment',
-      description: 'Movie tickets',
-      amount: 120.00,
-      date: '2026-05-10T19:20:00Z',
-      status: 'completed',
-      participants: ['MU', 'SK'],
-      splitAmount: 60.00,
-      icon: 'film',
-      color: '#ef4444',
-      groupId: groupId || 1,
-      receipt: 'https://images.unsplash.com/photo-1559526324-4b87b5e36e44?w=400&h=800&fit=crop'
-    },
-    {
-      id: 5,
-      name: 'Group Expense',
-      type: 'expense',
-      category: 'Groceries',
-      description: 'Weekly grocery shopping',
-      amount: 89.50,
-      date: '2026-05-09T14:15:00Z',
-      status: 'completed',
-      participants: ['MU', 'AH', 'SK'],
-      splitAmount: 29.83,
-      icon: 'basket',
-      color: '#06b6d4',
-      groupId: groupId || 1
+  const [transactions, setTransactions] = useState([]);
+
+  // Fetch real transactions from API
+  const fetchTransactions = useCallback(async () => {
+    if (!token) return;
+    try {
+      const data = await transactionsService.getTransactions(token, { groupId });
+      const raw = data?.data?.transactions || data?.data || data?.transactions || [];
+      setTransactions(Array.isArray(raw) ? raw : []);
+
+      // Also fetch summary if groupId is available
+      if (groupId) {
+        try {
+          const summaryData = await transactionsService.getGroupSummary(token, groupId);
+          setSummary(summaryData?.data || summaryData);
+        } catch {
+          // Summary is optional, don't fail if it errors
+        }
+      }
+    } catch (error) {
+      console.log('Fetch transactions error:', error.message);
+    } finally {
+      setLoading(false);
     }
-  ]);
+  }, [token, groupId]);
 
-  // Balance summary - could be derived from groupData
+  useEffect(() => {
+    fetchTransactions();
+  }, [fetchTransactions]);
+
+  // Balance summary from API summary or groupData
   const balanceSummary = {
-    totalCredits: 1250.50,
-    totalDebits: 367.75,
-    netBalance: groupData?.totalBalance || 882.75,
+    totalCredits: summary?.total_credits || summary?.totalCredits || 0,
+    totalDebits: summary?.total_debits || summary?.totalDebits || 0,
+    netBalance: summary?.net_balance || summary?.netBalance || groupData?.totalBalance || 0,
   };
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await fetchTransactions();
     setRefreshing(false);
-  }, []);
-
-  const formatDate = useCallback((dateString) => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffTime = Math.abs(now - date);
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    
-    if (diffDays === 1) return 'Yesterday';
-    if (diffDays < 7) return `${diffDays} days ago`;
-    
-    return date.toLocaleDateString('en-US', { 
-      month: 'short', 
-      day: 'numeric',
-      year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
-    });
-  }, []);
+  }, [fetchTransactions]);
 
   const formatAmount = useCallback((amount, type) => {
-    const formatted = amount.toLocaleString('en-US', {
+    const formatted = (amount || 0).toLocaleString('en-US', {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2
     });
-    
-    if (type === 'payment') return `+Rs ${formatted}`;
+    if (type === 'payment' || type === 'credit') return `+Rs ${formatted}`;
     return `-Rs ${formatted}`;
   }, []);
 

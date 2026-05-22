@@ -116,7 +116,7 @@ const GroupsScreen = ({ route }) => {
               try {
                 await groupsService.leaveGroup(token, group.id);
                 setGroupsData(prev => ({
-                  ...prev,
+                  your: prev.your.filter(g => g.id !== group.id),
                   member: prev.member.filter(g => g.id !== group.id),
                 }));
                 Alert.alert('Left Group', `You have left "${group.name}".`);
@@ -256,7 +256,7 @@ const GroupsScreen = ({ route }) => {
         </View>
       </View>
 
-      {/* Actions Section - Compact */}
+      {/* Actions Section */}
       <View style={styles.actionsSection}>
         <TouchableOpacity 
           style={styles.actionButton}
@@ -279,29 +279,29 @@ const GroupsScreen = ({ route }) => {
           </View>
           <Text style={styles.actionLabel}>Deposits</Text>
         </TouchableOpacity>
-        
+
+        {group.role === 'admin' && (
+          <TouchableOpacity 
+            style={styles.actionButton}
+            onPress={() => handleGroupAction('manage', group)}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.actionIconContainer, { backgroundColor: '#f0f9ff' }]}>
+              <Ionicons name="people" size={16} color="#06b6d4" />
+            </View>
+            <Text style={[styles.actionLabel, { color: '#06b6d4' }]}>Manage</Text>
+          </TouchableOpacity>
+        )}
+
         <TouchableOpacity 
           style={styles.actionButton}
-          onPress={() => handleGroupAction(group.role === 'admin' ? 'manage' : 'leave', group)}
+          onPress={() => handleGroupAction('leave', group)}
           activeOpacity={0.7}
         >
-          <View style={[
-            styles.actionIconContainer, 
-            { backgroundColor: group.role === 'admin' ? '#f0f9ff' : '#fef2f2' }
-          ]}>
-            <Ionicons 
-              name={group.role === 'admin' ? 'people' : 'exit'} 
-              size={16} 
-              color={group.role === 'admin' ? '#06b6d4' : '#dc2626'} 
-            />
+          <View style={[styles.actionIconContainer, { backgroundColor: '#fef2f2' }]}>
+            <Ionicons name="exit-outline" size={16} color="#dc2626" />
           </View>
-          <Text style={[
-            styles.actionLabel,
-            group.role === 'admin' && { color: '#06b6d4' },
-            group.role !== 'admin' && { color: '#dc2626' }
-          ]}>
-            {group.role === 'admin' ? 'Manage' : 'Leave'}
-          </Text>
+          <Text style={[styles.actionLabel, { color: '#dc2626' }]}>Leave</Text>
         </TouchableOpacity>
       </View>
     </Pressable>
