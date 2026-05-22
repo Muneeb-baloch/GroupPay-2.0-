@@ -4,7 +4,7 @@
 // Auth: JWT Identity Provider
 // ============================================================
 
-export const BASE_URL = 'http://grouppay-api.yousuf-dev.com';
+export const BASE_URL = process.env.EXPO_PUBLIC_API_URL || '';
 
 export const API_ENDPOINTS = {
   login:          `${BASE_URL}/api/up/auth/login`,
