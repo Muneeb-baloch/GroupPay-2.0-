@@ -93,8 +93,6 @@ const LoginScreen = () => {
         formData.password
       );
 
-      console.log('Login response:', JSON.stringify(data)); // Debug log
-
       stopSpinning();
       setLoading(false);
 
@@ -119,7 +117,6 @@ const LoginScreen = () => {
     } catch (error) {
       stopSpinning();
       setLoading(false);
-      console.log('Login error:', error.message);
       
       const msg = error.message?.toLowerCase() || '';
       if (msg.includes('invalid credentials') || msg.includes('invalid') || msg.includes('unauthorized')) {

@@ -43,8 +43,6 @@ export const apiCall = async (url, method = 'GET', body = null, token = null) =>
     throw new Error('Server returned an invalid response');
   }
 
-  console.log(`API [${method}] ${url} → ${response.status}:`, JSON.stringify(data));
-
   if (!response.ok) {
     throw new Error(
       data?.message || data?.error || data?.msg || `Request failed (${response.status})`
