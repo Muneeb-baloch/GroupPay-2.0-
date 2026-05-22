@@ -47,8 +47,14 @@ export const dashboardStyles = StyleSheet.create({
     fontWeight: '700',
     color: '#ffffff',
   },
+  profileGreeting: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: 'rgba(255, 255, 255, 0.75)',
+    marginBottom: 2,
+  },
   profileName: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: '700',
     color: '#ffffff',
   },

@@ -4,24 +4,61 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import { dashboardStyles } from '../styles/dashboardStyles';
+import { useAuth } from '../context/AuthContext';
+import { groupsService } from '../services/groupsService';
+import { formatCurrency } from '../utils/helpers';
 
 const { width } = Dimensions.get('window');
 
 const DashboardCard = () => {
   const navigation = useNavigation();
+  const { user, token } = useAuth();
+
+  const fullName = user?.fullname || user?.full_name || user?.name || user?.email?.split('@')[0] || 'User';
+  const firstName = fullName.split(' ')[0];
+  const profileInitial = firstName.charAt(0).toUpperCase();
+
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Good morning,';
+    if (hour < 17) return 'Good afternoon,';
+    return 'Good evening,';
+  };
+
   const [showGroupFilter, setShowGroupFilter] = useState(false);
   const [selectedGroups, setSelectedGroups] = useState(['all']);
-  const [totalBalance, setTotalBalance] = useState(72829.62);
+  const [totalBalance, setTotalBalance] = useState(0);
   const [balanceVisible, setBalanceVisible] = useState(true);
 
-  // Sample groups data - in real app, this would come from context/state management
-  const [availableGroups] = useState([
-    { id: 'all', name: 'All Groups', balance: 72829.62, color: '#06b6d4' },
-    { id: 1, name: 'Chichory', balance: 25430.50, color: '#06b6d4' },
-    { id: 2, name: 'Family Trip', balance: 18750.25, color: '#10b981' },
-    { id: 3, name: 'Office Lunch', balance: 12500.00, color: '#f59e0b' },
-    { id: 4, name: 'Weekend Plans', balance: 16148.87, color: '#8b5cf6' }
+  // Real groups from API
+  const [availableGroups, setAvailableGroups] = useState([
+    { id: 'all', name: 'All Groups', balance: 0, color: '#06b6d4' },
   ]);
+
+  // Fetch real groups
+  useEffect(() => {
+    const fetchGroups = async () => {
+      if (!token) return;
+      try {
+        const result = await groupsService.fetchGroups(token);
+        const groups = result.all || [];
+        const colors = ['#06b6d4', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#3b82f6'];
+        const normalized = groups.map((g, i) => ({
+          id: g.id,
+          name: g.name || 'Unnamed Group',
+          balance: g.totalBalance || 0,
+          color: g.color || colors[i % colors.length],
+        }));
+        const totalAll = normalized.reduce((sum, g) => sum + g.balance, 0);
+        const allGroupsEntry = { id: 'all', name: 'All Groups', balance: totalAll, color: '#06b6d4' };
+        setAvailableGroups([allGroupsEntry, ...normalized]);
+        setTotalBalance(totalAll);
+      } catch (error) {
+        console.log('DashboardCard fetch groups error:', error.message);
+      }
+    };
+    fetchGroups();
+  }, [token]);
 
   // Calculate total balance based on selected groups
   useEffect(() => {
@@ -158,9 +195,12 @@ const DashboardCard = () => {
           <View style={dashboardStyles.cardHeader}>
             <View style={dashboardStyles.profileContainer}>
               <View style={dashboardStyles.profileImage}>
-                <Text style={dashboardStyles.profileInitial}>M</Text>
+                <Text style={dashboardStyles.profileInitial}>{profileInitial}</Text>
               </View>
-              <Text style={dashboardStyles.profileName}>Muneeb</Text>
+              <View>
+                <Text style={dashboardStyles.profileGreeting}>{getGreeting()}</Text>
+                <Text style={dashboardStyles.profileName}>{firstName}</Text>
+              </View>
             </View>
             <TouchableOpacity style={dashboardStyles.notificationButton}>
               <Ionicons name="notifications-outline" size={24} color="#ffffff" />

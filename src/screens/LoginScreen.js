@@ -15,7 +15,8 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
-import { useAuth } from '../../App';
+import { useAuth } from '../context/AuthContext';
+import { authService } from '../services/authService';
 import { authStyles } from '../styles/authStyles';
 
 const LoginScreen = () => {
@@ -86,20 +87,54 @@ const LoginScreen = () => {
     setLoading(true);
     startSpinning();
 
-    // Simulate API call
-    setTimeout(() => {
-      // Hardcoded credentials: admin/admin
-      if (formData.username.toLowerCase() === 'admin' && formData.password === 'admin') {
-        stopSpinning();
-        setLoading(false);
-        // Use auth context to login
-        login();
+    try {
+      const data = await authService.login(
+        formData.username.trim(),
+        formData.password
+      );
+
+      console.log('Login response:', JSON.stringify(data)); // Debug log
+
+      stopSpinning();
+      setLoading(false);
+
+      // Handle various token response shapes from the API
+      const authToken =
+        data?.token ||
+        data?.access_token ||
+        data?.accessToken ||
+        data?.session?.access_token ||
+        data?.data?.token ||
+        data?.data?.access_token ||
+        '';
+
+      const userData =
+        data?.user ||
+        data?.data?.user ||
+        data?.data ||
+        { email: formData.username.trim() };
+
+      await login(userData, authToken);
+
+    } catch (error) {
+      stopSpinning();
+      setLoading(false);
+      console.log('Login error:', error.message);
+      
+      const msg = error.message?.toLowerCase() || '';
+      if (msg.includes('invalid credentials') || msg.includes('invalid') || msg.includes('unauthorized')) {
+        Alert.alert(
+          'Login Failed',
+          'Email or password is incorrect. If you just signed up, please verify your email first.',
+          [
+            { text: 'Verify Email', onPress: () => navigation.navigate('VerifyEmail', { email: formData.username.trim() }) },
+            { text: 'Try Again', style: 'cancel' }
+          ]
+        );
       } else {
-        stopSpinning();
-        setLoading(false);
-        Alert.alert('Login Failed', 'Invalid email or password. Try: admin/admin');
+        Alert.alert('Login Failed', error.message || 'Something went wrong. Please try again.');
       }
-    }, 1500);
+    }
   };
 
   const navigateToSignup = () => {

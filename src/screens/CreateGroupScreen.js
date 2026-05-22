@@ -15,8 +15,11 @@ import {
   TouchableWithoutFeedback
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { groupsService } from '../services/groupsService';
+import { useAuth } from '../context/AuthContext';
 
 const CreateGroupScreen = ({ navigation }) => {
+  const { token } = useAuth();
   const [groupName, setGroupName] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -27,37 +30,40 @@ const CreateGroupScreen = ({ navigation }) => {
     }
 
     setLoading(true);
-    
-    // Create new group object
-    const newGroup = {
-      id: Date.now(), // Simple ID generation
-      name: groupName.trim(),
-      status: 'active',
-      role: 'admin',
-      members: 1,
-      totalBalance: 0,
-      lastActivity: 'Just created',
-      memberInitials: ['MU'], // You can make this dynamic later
-      color: '#06b6d4'
-    };
-    
-    // Simulate API call
-    setTimeout(() => {
+
+    try {
+      const data = await groupsService.createGroup(token, groupName.trim());
+      console.log('Create group response:', JSON.stringify(data));
+
       setLoading(false);
+
+      // Build group object from API response
+      const newGroup = data?.data || data?.group || {
+        id: data?.id || Date.now(),
+        name: groupName.trim(),
+        status: 'active',
+        role: 'admin',
+        members: 1,
+        totalBalance: 0,
+        lastActivity: 'Just created',
+        memberInitials: ['ME'],
+        color: '#06b6d4',
+        isFavorite: false,
+      };
+
       Alert.alert(
-        'Success', 
+        'Success',
         `Group "${groupName}" created successfully!`,
-        [
-          {
-            text: 'OK',
-            onPress: () => {
-              // Navigate back and pass the new group data
-              navigation.navigate('GroupsList', { newGroup });
-            }
-          }
-        ]
+        [{
+          text: 'OK',
+          onPress: () => navigation.navigate('GroupsList', { newGroup }),
+        }]
       );
-    }, 1500);
+    } catch (error) {
+      setLoading(false);
+      console.log('Create group error:', error.message);
+      Alert.alert('Error', error.message || 'Could not create group. Please try again.');
+    }
   };
 
   return (

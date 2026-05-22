@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import { authStyles } from '../styles/authStyles';
+import { authService } from '../services/authService';
 
 const ForgotPasswordScreen = () => {
   const navigation = useNavigation();
@@ -30,28 +31,21 @@ const ForgotPasswordScreen = () => {
       Alert.alert('Error', 'Please enter your email address');
       return;
     }
-
     if (!validateEmail(email)) {
       Alert.alert('Error', 'Please enter a valid email address');
       return;
     }
 
     setLoading(true);
-
-    // Simulate API call
-    setTimeout(() => {
+    try {
+      await authService.forgotPassword(email.trim());
       setLoading(false);
-      Alert.alert(
-        'Reset Link Sent!',
-        `A password reset link has been sent to ${email}. Please check your inbox and follow the instructions.`,
-        [
-          {
-            text: 'OK',
-            onPress: () => navigation.navigate('Login')
-          }
-        ]
-      );
-    }, 2000);
+      // Navigate to reset password screen with email
+      navigation.navigate('ResetPassword', { email: email.trim() });
+    } catch (error) {
+      setLoading(false);
+      Alert.alert('Error', error.message || 'Could not send reset link. Please try again.');
+    }
   };
 
   return (

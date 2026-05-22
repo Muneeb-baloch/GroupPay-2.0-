@@ -3,49 +3,50 @@ import { StyleSheet } from 'react-native';
 export const homeStyles = StyleSheet.create({
   scrollView: {
     flex: 1,
-    paddingBottom: 40, // Reduced since safe area is handled dynamically
     backgroundColor: '#f8fffe',
+  },
+  scrollContent: {
+    paddingBottom: 120,
   },
   bottomPadding: {
     height: 20,
   },
 
-  // Favorite Groups Section
-  favoriteSection: {
-    marginHorizontal: 12,
+  // Section wrapper
+  section: {
+    marginHorizontal: 16,
     marginBottom: 20,
   },
-  favoriteHeader: {
+
+  // Section Header - unified for all sections
+  sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 8,
-    marginBottom: 16,
+    marginBottom: 12,
   },
-  favoriteHeaderContent: {
+  sectionHeaderLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
-  favoriteHeaderTitle: {
-    fontSize: 18,
+  sectionTitle: {
+    fontSize: 17,
     fontWeight: '700',
     color: '#0f172a',
   },
   viewAllButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    gap: 2,
   },
   viewAllText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
     color: '#06b6d4',
   },
 
-  // Group Card Styles - Same as GroupsScreen
+  // Group Card Styles
   groupCard: {
     backgroundColor: '#ffffff',
     borderRadius: 16,
@@ -62,8 +63,6 @@ export const homeStyles = StyleSheet.create({
     transform: [{ scale: 0.98 }],
     shadowOpacity: 0.08,
   },
-
-  // Card Header
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -136,8 +135,6 @@ export const homeStyles = StyleSheet.create({
     backgroundColor: '#f8fafc',
     marginLeft: 8,
   },
-
-  // Balance Section
   balanceSection: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -204,8 +201,6 @@ export const homeStyles = StyleSheet.create({
     fontWeight: '700',
     color: '#ffffff',
   },
-
-  // Actions Section
   actionsSection: {
     flexDirection: 'row',
     justifyContent: 'space-around',
@@ -233,40 +228,151 @@ export const homeStyles = StyleSheet.create({
   // Empty State
   emptyFavorites: {
     alignItems: 'center',
-    paddingVertical: 40,
+    paddingVertical: 32,
     paddingHorizontal: 20,
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#f1f5f9',
   },
   emptyFavoritesIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     backgroundColor: '#f1f5f9',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
+    marginBottom: 12,
   },
   emptyFavoritesTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
     color: '#0f172a',
-    marginBottom: 6,
+    marginBottom: 4,
   },
   emptyFavoritesSubtitle: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#64748b',
     textAlign: 'center',
-    lineHeight: 20,
-    marginBottom: 20,
+    lineHeight: 18,
+    marginBottom: 16,
   },
   browseGroupsButton: {
     backgroundColor: '#06b6d4',
     paddingHorizontal: 20,
-    paddingVertical: 10,
+    paddingVertical: 8,
     borderRadius: 8,
   },
   browseGroupsText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#ffffff',
+  },
+
+  // Recent Cards (Scenes & Expenses)
+  recentCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    padding: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: '#f1f5f9',
+  },
+  recentCardLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 12,
+  },
+  recentIconBox: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  recentCardInfo: {
+    flex: 1,
+  },
+  recentCardTitle: {
     fontSize: 14,
     fontWeight: '600',
+    color: '#0f172a',
+    marginBottom: 4,
+  },
+  recentCardMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    flexWrap: 'wrap',
+  },
+  recentCardSubtitle: {
+    fontSize: 12,
+    color: '#94a3b8',
+    fontWeight: '500',
+  },
+  recentCardDot: {
+    fontSize: 12,
+    color: '#cbd5e1',
+  },
+  recentCardRight: {
+    alignItems: 'flex-end',
+  },
+  recentCardAmount: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0f172a',
+    marginBottom: 2,
+  },
+  recentCardShare: {
+    fontSize: 11,
+    color: '#94a3b8',
+    fontWeight: '500',
+  },
+
+  // Category badge for expenses
+  categoryBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  categoryBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  expenseType: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+
+  // Split Bill / Create Expense Button
+  splitBillButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#06b6d4',
+    borderRadius: 12,
+    paddingVertical: 13,
+    marginTop: 4,
+    gap: 8,
+    shadowColor: '#06b6d4',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  splitBillButtonText: {
+    fontSize: 15,
+    fontWeight: '700',
     color: '#ffffff',
   },
 });

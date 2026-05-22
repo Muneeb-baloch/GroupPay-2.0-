@@ -44,17 +44,18 @@ const SplashScreen = ({ onFinish }) => {
     startAnimationSequence();
 
     const timer = setTimeout(() => {
+      // Fade out and immediately call onFinish without delay
       Animated.timing(fadeOut, {
         toValue: 0,
-        duration: 400,
+        duration: 300,
         useNativeDriver: true,
       }).start(() => {
-        // Ensure callback safe execution to avoid white screen lockup
+        // Call onFinish immediately when fade completes
         if (typeof onFinish === 'function') {
           onFinish();
         }
       });
-    }, 3500);
+    }, 3200); // Reduced from 3500 to 3200
 
     return () => clearTimeout(timer);
   }, [onFinish]);
@@ -353,8 +354,10 @@ const SplashScreen = ({ onFinish }) => {
 
 const styles = StyleSheet.create({
   container: {
+    ...StyleSheet.absoluteFillObject, // Changed to absolute positioning for overlay
     flex: 1,
     backgroundColor: '#0891b2', // Solid background fallback to keep transition smooth
+    zIndex: 9999, // Ensure it's on top
   },
   gradient: {
     flex: 1,

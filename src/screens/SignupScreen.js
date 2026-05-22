@@ -16,13 +16,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import { authStyles } from '../styles/authStyles';
+import { authService } from '../services/authService';
 
 const SignupScreen = () => {
   const navigation = useNavigation();
   const [formData, setFormData] = useState({
     fullName: '',
     email: '',
-    username: '',
+    phone: '',
     password: '',
     confirmPassword: ''
   });
@@ -89,8 +90,8 @@ const SignupScreen = () => {
       Alert.alert('Error', 'Please enter a valid email address');
       return false;
     }
-    if (!formData.username.trim() || formData.username.length < 3) {
-      Alert.alert('Error', 'Username must be at least 3 characters long');
+    if (!formData.phone.trim() || formData.phone.length < 7) {
+      Alert.alert('Error', 'Please enter a valid phone number');
       return false;
     }
     if (!formData.password.trim() || formData.password.length < 6) {
@@ -114,21 +115,43 @@ const SignupScreen = () => {
     setLoading(true);
     startSpinning();
 
-    // Simulate API call
-    setTimeout(() => {
+    try {
+      await authService.signup(
+        formData.email.trim(),
+        formData.password,
+        formData.fullName.trim(),
+        formData.phone.trim()
+      );
+
       stopSpinning();
       setLoading(false);
-      Alert.alert(
-        'Success!', 
-        'Account created successfully. You can now sign in.',
-        [
-          {
-            text: 'OK',
-            onPress: () => navigation.navigate('Login')
-          }
-        ]
-      );
-    }, 2000);
+      navigation.navigate('VerifyEmail', { email: formData.email.trim() });
+
+    } catch (error) {
+      stopSpinning();
+      setLoading(false);
+
+      const errMsg = error.message || '';
+      const isSmtpError = errMsg.includes('535') || errMsg.includes('SMTP') ||
+        errMsg.includes('BadCredentials') || errMsg.includes('Invalid login') ||
+        errMsg.includes('Username and Password');
+
+      if (isSmtpError) {
+        // Account was created in DB but email sending failed on server side
+        // Still navigate to verify screen - user can enter OTP if they get it
+        // or contact support
+        Alert.alert(
+          'Account Created',
+          'Your account was created but the verification email could not be sent due to a server issue. Please contact support or try again later.',
+          [
+            { text: 'Try Login', onPress: () => navigation.navigate('Login') },
+            { text: 'OK', style: 'cancel' }
+          ]
+        );
+      } else {
+        Alert.alert('Signup Failed', errMsg || 'Could not create account. Please try again.');
+      }
+    }
   };
 
   const navigateToLogin = () => {
@@ -215,17 +238,18 @@ const SignupScreen = () => {
               </View>
             </View>
 
-            {/* Username Field */}
+            {/* Phone Field */}
             <View style={authStyles.inputContainer}>
-              <Text style={authStyles.inputLabel}>Username</Text>
+              <Text style={authStyles.inputLabel}>Phone Number</Text>
               <View style={authStyles.inputWrapper}>
-                <Ionicons name="at-outline" size={20} color="#64748b" style={authStyles.inputIcon} />
+                <Ionicons name="call-outline" size={20} color="#64748b" style={authStyles.inputIcon} />
                 <TextInput
                   style={authStyles.textInput}
-                  placeholder="Choose a username"
+                  placeholder="Enter your phone number"
                   placeholderTextColor="#9ca3af"
-                  value={formData.username}
-                  onChangeText={(value) => handleInputChange('username', value)}
+                  value={formData.phone}
+                  onChangeText={(value) => handleInputChange('phone', value)}
+                  keyboardType="phone-pad"
                   autoCapitalize="none"
                   autoCorrect={false}
                 />

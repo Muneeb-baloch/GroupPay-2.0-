@@ -3,6 +3,8 @@ import { createStackNavigator } from '@react-navigation/stack';
 import LoginScreen from '../screens/LoginScreen';
 import SignupScreen from '../screens/SignupScreen';
 import ForgotPasswordScreen from '../screens/ForgotPasswordScreen';
+import VerifyEmailScreen from '../screens/VerifyEmailScreen';
+import ResetPasswordScreen from '../screens/ResetPasswordScreen';
 
 const Stack = createStackNavigator();
 
@@ -28,27 +30,11 @@ const AuthNavigator = () => {
         },
       }}
     >
-      <Stack.Screen 
-        name="Login" 
-        component={LoginScreen}
-        options={{
-          animationTypeForReplace: 'push',
-        }}
-      />
-      <Stack.Screen 
-        name="Signup" 
-        component={SignupScreen}
-        options={{
-          animationTypeForReplace: 'push',
-        }}
-      />
-      <Stack.Screen 
-        name="ForgotPassword" 
-        component={ForgotPasswordScreen}
-        options={{
-          animationTypeForReplace: 'push',
-        }}
-      />
+      <Stack.Screen name="Login" component={LoginScreen} />
+      <Stack.Screen name="Signup" component={SignupScreen} />
+      <Stack.Screen name="VerifyEmail" component={VerifyEmailScreen} />
+      <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+      <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} />
     </Stack.Navigator>
   );
 };

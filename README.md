@@ -1,173 +1,188 @@
-# GroupPay - Mobile Group Payment App
+# GroupPay — Mobile Group Payment App
 
-A React Native mobile application for managing group payments, deposits, and expenses with a clean, modern UI design.
+A React Native mobile application for managing group payments, shared expenses, deposits, and scenes with a clean, modern UI built on a real backend API.
 
-## 🚀 Features
+---
 
-### 📱 Core Functionality
-- **Group Management**: Create and manage payment groups with ease
-- **Transactions**: Track all group transactions with detailed filtering
-- **Deposits**: Handle deposits with multiple payment methods
-- **Receipt Upload**: Upload bank transfer receipts with camera/gallery integration
-- **Real-time Updates**: Live preview and instant feedback
+## Features
 
-### 🎨 UI/UX Highlights
-- **Mobile-Native Design**: Optimized for mobile with proper touch targets
-- **Cyan Theme**: Consistent #06b6d4 color scheme throughout
-- **Smooth Navigation**: Stack and tab navigation with proper transitions
-- **Keyboard Handling**: Proper keyboard avoidance and dismissal
-- **Pull-to-Refresh**: Native refresh functionality on lists
-- **Empty States**: Beautiful empty state designs with helpful messaging
+### Authentication
+- Email/password login and signup
+- Email OTP verification after signup
+- Forgot password with reset token flow
+- JWT-based session persistence via AsyncStorage
+- Auto-login on app restart
 
-### 📋 Screens
-1. **Home Screen**: Dashboard with quick actions and overview cards
-2. **Groups Screen**: FlatList of groups with filtering (Admin/Member)
-3. **Transactions Screen**: Balance overview with date-based filtering
-4. **Deposits Screen**: Deposit management with status filtering
-5. **Create Group**: Simple group creation with live preview
-6. **Create Deposit**: Enhanced deposit creation with receipt upload
+### Groups
+- Create and manage payment groups
+- Admin and Member role separation
+- Star/favorite groups
+- Leave groups
+- Real-time balance display per group
+- Group filter on dashboard
 
-## 🛠️ Tech Stack
+### Transactions & Deposits
+- Track all group transactions with filtering
+- Deposit management with multiple payment methods
+- Bank transfer receipt upload (camera/gallery)
+- Date-based and type-based filtering
 
-- **React Native**: 0.81.5
-- **Expo**: ~54.0.33
-- **React Navigation**: v6 (Stack & Bottom Tabs)
-- **Expo Vector Icons**: For consistent iconography
-- **Expo Image Picker**: Camera and gallery integration
-- **React Native Gesture Handler**: Smooth gesture interactions
+### Scenes
+- Shared expense events (scenes)
+- Participant breakdown with paid/owes status
+- Swipe to edit or delete scenes
 
-## 📦 Installation
+### Home Dashboard
+- Personalized greeting with user's name
+- Balance overview with group filter
+- Recent scenes and expenses
+- Favorite group quick access
+- Quick action buttons (Create Group, Deposit, Scenes, Split Bill)
 
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/Muneeb-baloch/GroupPay.git
-   cd GroupPay
-   ```
+### UI/UX
+- Mobile-native design with cyan theme (`#06b6d4`)
+- Animated splash screen
+- Smooth navigation transitions
+- Pull-to-refresh on all lists
+- Skeleton loading states
+- Empty states with helpful messaging
+- Keyboard handling on all input screens
 
-2. **Install dependencies**
-   ```bash
-   npm install
-   ```
+---
 
-3. **Start the development server**
-   ```bash
-   npm start
-   ```
+## Tech Stack
 
-4. **Run on device/simulator**
-   ```bash
-   # iOS
-   npm run ios
-   
-   # Android
-   npm run android
-   ```
+| Category | Technology |
+|----------|-----------|
+| Framework | React Native 0.81.5 |
+| Platform | Expo ~54.0.33 |
+| Navigation | React Navigation v6 (Stack + Bottom Tabs) |
+| Auth Storage | AsyncStorage |
+| Icons | Expo Vector Icons |
+| Gradients | Expo Linear Gradient |
+| Image Picker | Expo Image Picker |
+| Gestures | React Native Gesture Handler |
+| Safe Area | React Native Safe Area Context |
+| Backend | Express + Node.js (GroupPay API) |
+| Database | Supabase Postgres |
+| Auth | JWT Identity Provider |
 
-## 📱 Screenshots
+---
 
-*Screenshots will be added soon*
-
-## 🏗️ Project Structure
+## Project Structure
 
 ```
 src/
 ├── components/          # Reusable UI components
 │   ├── CustomBottomTab.js
 │   └── DashboardCard.js
+├── config/
+│   └── api.js           # Base URL + apiCall helper
+├── constants/
+│   └── theme.js         # Colors, spacing, typography
+├── context/
+│   └── AuthContext.js   # Auth state context
 ├── navigation/          # Navigation configuration
+│   ├── AuthNavigator.js
 │   ├── BottomTabNavigator.js
-│   └── GroupsStackNavigator.js
-├── screens/            # App screens
+│   ├── GroupsStackNavigator.js
+│   └── ScenesStackNavigator.js
+├── screens/             # App screens
 │   ├── HomeScreen.js
 │   ├── GroupsScreen.js
+│   ├── CreateGroupScreen.js
+│   ├── ManageGroupScreen.js
 │   ├── TransactionsScreen.js
 │   ├── DepositsScreen.js
-│   ├── CreateGroupScreen.js
-│   └── CreateDepositScreen.js
-└── styles/             # Style definitions
-    ├── appStyles.js
-    ├── homeStyles.js
-    ├── customTabStyles.js
-    └── screenStyles.js
+│   ├── CreateDepositScreen.js
+│   ├── ReceiptViewScreen.js
+│   ├── ScenesScreen.js
+│   ├── SceneDetailScreen.js
+│   ├── ExpensesScreen.js
+│   ├── LoginScreen.js
+│   ├── SignupScreen.js
+│   ├── VerifyEmailScreen.js
+│   ├── ForgotPasswordScreen.js
+│   ├── ResetPasswordScreen.js
+│   └── SplashScreen.js
+├── services/            # API service layer
+│   ├── authService.js   # Auth API calls
+│   └── groupsService.js # Groups API calls
+├── styles/              # Shared styles
+│   ├── appStyles.js
+│   ├── authStyles.js
+│   ├── customTabStyles.js
+│   ├── dashboardStyles.js
+│   ├── homeStyles.js
+│   └── screenStyles.js
+└── utils/
+    └── helpers.js       # formatBalance, formatDate, normalizeGroup, etc.
 ```
 
-## 🎯 Key Features Implementation
+---
 
-### Group Management
-- Create groups with simple name input
-- Live preview during creation
-- FlatList implementation for performance
-- Admin/Member filtering with chips
+## API
 
-### Transaction System
-- Balance overview cards (Credits, Debits, Net Balance)
-- Date-based filtering (All Time, Today, Last 7 Days, etc.)
-- Rich transaction cards with proper text wrapping
-- Currency formatting with Rs symbol
+Backend: `http://grouppay-api.yousuf-dev.com`  
+Docs: `http://grouppay-api.yousuf-dev.com/docs`
 
-### Deposit Functionality
-- Multiple transaction types (Deposit, Withdrawal, Request)
-- Various payment methods (Bank Transfer, Cash, Digital Wallet, Check)
-- Receipt upload requirement for bank transfers
-- Image picker with camera/gallery options
-- Form validation and error handling
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/up/auth/login` | Login |
+| POST | `/api/up/auth/signup` | Register |
+| POST | `/api/up/auth/verify-email` | Verify OTP |
+| POST | `/api/up/auth/forgot-password` | Request reset link |
+| POST | `/api/up/auth/reset-password` | Reset with token |
+| PATCH | `/api/up/auth/profile` | Update profile |
+| GET | `/api/up/groups` | Get all groups |
+| POST | `/api/up/groups` | Create group |
+| GET | `/api/up/groups/:id` | Get group by ID |
+| PATCH | `/api/up/groups/:id` | Update group |
+| POST | `/api/up/groups/:id/star` | Toggle star |
+| DELETE | `/api/up/groups/:id/leave` | Leave group |
 
-### Mobile Optimizations
-- KeyboardAvoidingView for proper input handling
-- TouchableWithoutFeedback for keyboard dismissal
-- Proper ScrollView with keyboard persistence
-- FlatList for large data sets
-- Pull-to-refresh functionality
+---
 
-## 🔧 Configuration
+## Installation
 
-### Navigation Setup
-The app uses React Navigation v6 with:
-- Bottom Tab Navigator for main sections
-- Stack Navigator for detailed flows
-- Proper header configurations
-- Custom tab bar styling
+```bash
+# Clone the repo
+git clone https://github.com/Muneeb-baloch/GroupPay.git
+cd GroupPay
 
-### Styling Approach
-- Consistent color scheme (#06b6d4 cyan theme)
-- Mobile-first responsive design
-- Shadow and elevation for depth
-- Proper spacing and typography scale
+# Install dependencies
+npm install
 
-## 🚀 Future Enhancements
+# Start the dev server
+npm start
 
-- [ ] Backend API integration
-- [ ] User authentication
+# Run on iOS
+npm run ios
+
+# Run on Android
+npm run android
+```
+
+---
+
+## Future Enhancements
+
 - [ ] Push notifications
 - [ ] Expense splitting algorithms
 - [ ] Payment gateway integration
-- [ ] Dark mode support
-- [ ] Offline functionality
-- [ ] Export functionality
+- [ ] Dark mode
+- [ ] Offline support
+- [ ] Export to PDF/CSV
 
-## 🤝 Contributing
+---
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 👨‍💻 Author
+## Author
 
 **Muneeb Baloch**
 - GitHub: [@Muneeb-baloch](https://github.com/Muneeb-baloch)
 
-## 🙏 Acknowledgments
-
-- Expo team for the amazing development platform
-- React Navigation for smooth navigation solutions
-- Community contributors and testers
-
 ---
 
-**Note**: This is a demo application for learning purposes. For production use, implement proper backend integration, authentication, and security measures.
+## License
+
+MIT License — see [LICENSE](LICENSE) for details.

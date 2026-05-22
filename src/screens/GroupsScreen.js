@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { 
   View, 
   Text, 
@@ -7,82 +7,55 @@ import {
   StyleSheet,
   Alert,
   Pressable,
-  RefreshControl
+  RefreshControl,
+  ActivityIndicator
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import { useAuth } from '../context/AuthContext';
+import { groupsService } from '../services/groupsService';
+import { formatBalance, getStatusColor } from '../utils/helpers';
+import { COLORS, SPACING, RADIUS, FONT, SHADOW } from '../constants/theme';
 
 const GroupsScreen = ({ route }) => {
   const navigation = useNavigation();
+  const { token } = useAuth();
   const [activeTab, setActiveTab] = useState('your');
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  // Sample data with more realistic structure - now using state
-  const [groupsData, setGroupsData] = useState({
-    your: [
-      {
-        id: 1,
-        name: 'Testing',
-        status: 'active',
-        role: 'admin',
-        members: 1,
-        totalBalance: 1250.50,
-        lastActivity: '2 hours ago',
-        memberInitials: ['MU'],
-        color: '#06b6d4',
-        isFavorite: false
-      }
-    ],
-    member: [
-      {
-        id: 2,
-        name: 'Chichory',
-        status: 'active',
-        role: 'member',
-        members: 4,
-        totalBalance: -367.75,
-        lastActivity: '1 day ago',
-        memberInitials: ['MU', 'YU', 'AH', 'SK'],
-        color: '#8b5cf6',
-        isFavorite: true
-      }
-    ]
-  });
+  const [groupsData, setGroupsData] = useState({ your: [], member: [] });
 
-  // Handle new group from CreateGroupScreen
+  // Fetch groups from API
+  const fetchGroups = useCallback(async () => {
+    try {
+      const result = await groupsService.fetchGroups(token);
+      setGroupsData({ your: result.your, member: result.member });
+    } catch (error) {
+      console.log('Fetch groups error:', error.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    fetchGroups();
+  }, [fetchGroups]);
+
+  // Handle new group from CreateGroupScreen - refresh from API
   React.useEffect(() => {
     if (route.params?.newGroup) {
-      const newGroup = route.params.newGroup;
-      setGroupsData(prevData => ({
-        ...prevData,
-        your: [...prevData.your, newGroup]
-      }));
-      
-      // Clear the parameter to avoid re-adding on subsequent renders
+      fetchGroups(); // Re-fetch from API to get fresh data
       navigation.setParams({ newGroup: undefined });
-      
-      // Switch to 'your' tab to show the new group
       setActiveTab('your');
     }
-  }, [route.params?.newGroup, navigation]);
-
-  // Simulate initial loading
-  React.useEffect(() => {
-    const timer = setTimeout(() => {
-      setLoading(false);
-    }, 2000);
-    return () => clearTimeout(timer);
-  }, []);
+  }, [route.params?.newGroup, navigation, fetchGroups]);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await fetchGroups();
     setRefreshing(false);
-  }, []);
-
-  // Skeleton Loading Component
+  }, [fetchGroups]);
   const renderSkeletonCard = useCallback(() => (
     <View style={styles.skeletonCard}>
       <View style={styles.skeletonHeader}>
@@ -122,70 +95,77 @@ const GroupsScreen = ({ route }) => {
 
   const handleGroupAction = useCallback((action, group) => {
     const actions = {
-      transactions: () => navigation.navigate('Transactions', { 
-        groupName: group.name,
-        groupId: group.id,
-        groupData: group
+      transactions: () => navigation.navigate('Transactions', {
+        groupName: group.name, groupId: group.id, groupData: group
       }),
       deposits: () => navigation.navigate('Deposits', {
-        groupName: group.name,
-        groupId: group.id,
-        groupData: group
+        groupName: group.name, groupId: group.id, groupData: group
       }),
       manage: () => navigation.navigate('ManageGroup', {
-        groupName: group.name,
-        groupId: group.id,
-        groupData: group
+        groupName: group.name, groupId: group.id, groupData: group
       }),
       leave: () => Alert.alert(
-        'Leave Group', 
-        `Are you sure you want to leave "${group.name}"? This action cannot be undone.`,
+        'Leave Group',
+        `Are you sure you want to leave "${group.name}"?`,
         [
           { text: 'Cancel', style: 'cancel' },
-          { text: 'Leave', style: 'destructive', onPress: () => console.log('Leave group') }
+          {
+            text: 'Leave',
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                await groupsService.leaveGroup(token, group.id);
+                setGroupsData(prev => ({
+                  ...prev,
+                  member: prev.member.filter(g => g.id !== group.id),
+                }));
+                Alert.alert('Left Group', `You have left "${group.name}".`);
+              } catch (error) {
+                Alert.alert('Error', error.message || 'Could not leave group.');
+              }
+            }
+          }
         ]
       )
     };
-    
     actions[action]?.();
-  }, [navigation]);
+  }, [navigation, token]);
 
-  const toggleFavorite = useCallback((groupId) => {
+  const toggleFavorite = useCallback(async (groupId) => {
+    const currentGroup = [...groupsData.your, ...groupsData.member].find(g => g.id === groupId);
+    const newStarred = !currentGroup?.isFavorite;
+
+    // Optimistic update
     setGroupsData(prevData => {
       const newData = { ...prevData };
-      
-      // Find and update the group in the appropriate category
       Object.keys(newData).forEach(category => {
-        const groupIndex = newData[category].findIndex(group => group.id === groupId);
-        if (groupIndex !== -1) {
-          newData[category][groupIndex] = {
-            ...newData[category][groupIndex],
-            isFavorite: !newData[category][groupIndex].isFavorite
-          };
+        const idx = newData[category].findIndex(g => g.id === groupId);
+        if (idx !== -1) {
+          newData[category][idx] = { ...newData[category][idx], isFavorite: newStarred };
         }
       });
-      
       return newData;
     });
-  }, []);
 
-  const formatBalance = useCallback((balance) => {
-    const isNegative = balance < 0;
-    const formatted = Math.abs(balance).toLocaleString('en-US', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    });
-    return `${isNegative ? '-' : '+'}$${formatted}`;
-  }, []);
+    try {
+      await groupsService.toggleStar(token, groupId, newStarred);
+    } catch (error) {
+      console.log('Toggle star error:', error.message);
+      // Revert on failure
+      setGroupsData(prevData => {
+        const newData = { ...prevData };
+        Object.keys(newData).forEach(category => {
+          const idx = newData[category].findIndex(g => g.id === groupId);
+          if (idx !== -1) {
+            newData[category][idx] = { ...newData[category][idx], isFavorite: !newStarred };
+          }
+        });
+        return newData;
+      });
+    }
+  }, [groupsData, token]);
 
-  const getStatusColor = useCallback((status) => {
-    const colors = {
-      active: '#10b981',
-      inactive: '#6b7280',
-      pending: '#f59e0b'
-    };
-    return colors[status] || colors.inactive;
-  }, []);
+  // Skeleton Loading Component
 
   const renderGroupCard = useCallback((group) => (
     <Pressable 
@@ -329,125 +309,43 @@ const GroupsScreen = ({ route }) => {
 
   const renderEmptyState = useCallback(() => (
     <View style={styles.emptyState}>
-      {/* Decorative Background Elements */}
-      <View style={styles.emptyBackground}>
-        <View style={[styles.backgroundCircle, styles.backgroundCircle1]} />
-        <View style={[styles.backgroundCircle, styles.backgroundCircle2]} />
-        <View style={[styles.backgroundCircle, styles.backgroundCircle3]} />
+      <View style={styles.emptyIconContainer}>
+        <Ionicons
+          name={activeTab === 'your' ? 'people-outline' : 'person-add-outline'}
+          size={56}
+          color="#06b6d4"
+        />
       </View>
 
-      {/* Main Illustration */}
-      <View style={styles.emptyIllustration}>
-        <View style={styles.illustrationContainer}>
-          {/* Central Icon */}
-          <View style={styles.centralIconContainer}>
-            <Ionicons 
-              name={activeTab === 'your' ? 'people-outline' : 'person-add-outline'} 
-              size={64} 
-              color="#06b6d4" 
-            />
-          </View>
-          
-          {/* Floating Elements */}
-          <View style={[styles.floatingElement, styles.floatingElement1]}>
-            <Ionicons name="wallet-outline" size={20} color="#10b981" />
-          </View>
-          <View style={[styles.floatingElement, styles.floatingElement2]}>
-            <Ionicons name="receipt-outline" size={18} color="#8b5cf6" />
-          </View>
-          <View style={[styles.floatingElement, styles.floatingElement3]}>
-            <Ionicons name="card-outline" size={16} color="#f59e0b" />
-          </View>
-        </View>
-      </View>
+      <Text style={styles.emptyTitle}>
+        {activeTab === 'your' ? 'No Groups Yet' : 'No Member Groups'}
+      </Text>
+      <Text style={styles.emptySubtitle}>
+        {activeTab === 'your'
+          ? 'Create your first group to start splitting bills and tracking shared expenses.'
+          : "You haven't joined any groups yet. Ask a friend to invite you."}
+      </Text>
 
-      {/* Content */}
-      <View style={styles.emptyContent}>
-        <Text style={styles.emptyTitle}>
-          {activeTab === 'your' ? 'Start Your First Group' : 'No Groups Yet'}
-        </Text>
-        <Text style={styles.emptySubtitle}>
-          {activeTab === 'your' 
-            ? 'Create a group to split bills, track expenses, and manage shared payments with friends and family.' 
-            : 'You haven\'t joined any groups yet. Ask friends to invite you or create your own group to get started.'}
-        </Text>
-
-        {/* Feature Highlights */}
-        <View style={styles.featureHighlights}>
-          <View style={styles.featureItem}>
-            <View style={styles.featureIcon}>
-              <Ionicons name="people" size={16} color="#06b6d4" />
-            </View>
-            <Text style={styles.featureText}>Split expenses easily</Text>
-          </View>
-          <View style={styles.featureItem}>
-            <View style={styles.featureIcon}>
-              <Ionicons name="calculator" size={16} color="#10b981" />
-            </View>
-            <Text style={styles.featureText}>Track balances automatically</Text>
-          </View>
-          <View style={styles.featureItem}>
-            <View style={styles.featureIcon}>
-              <Ionicons name="notifications" size={16} color="#8b5cf6" />
-            </View>
-            <Text style={styles.featureText}>Get payment reminders</Text>
-          </View>
-        </View>
-
-        {/* Action Buttons */}
-        <View style={styles.emptyActions}>
-          {activeTab === 'your' ? (
-            <TouchableOpacity 
-              style={styles.primaryActionButton} 
-              activeOpacity={0.8}
-              onPress={() => navigation.navigate('CreateGroup')}
-            >
-              <View style={styles.actionButtonContent}>
-                <Ionicons name="add-circle" size={24} color="#ffffff" />
-                <Text style={styles.primaryActionText}>Create Your First Group</Text>
-              </View>
-            </TouchableOpacity>
-          ) : (
-            <View style={styles.memberEmptyActions}>
-              <TouchableOpacity 
-                style={styles.primaryActionButton} 
-                activeOpacity={0.8}
-                onPress={() => navigation.navigate('CreateGroup')}
-              >
-                <View style={styles.actionButtonContent}>
-                  <Ionicons name="add-circle" size={24} color="#ffffff" />
-                  <Text style={styles.primaryActionText}>Create New Group</Text>
-                </View>
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={styles.secondaryActionButton} 
-                activeOpacity={0.8}
-                onPress={() => Alert.alert('Join Group', 'Ask a friend to send you a group invitation link!')}
-              >
-                <View style={styles.actionButtonContent}>
-                  <Ionicons name="person-add" size={20} color="#06b6d4" />
-                  <Text style={styles.secondaryActionText}>Join Existing Group</Text>
-                </View>
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
-
-        {/* Help Text */}
-        <Text style={styles.emptyHelpText}>
-          {activeTab === 'your' 
-            ? 'Need help? Tap the info icon for a quick tutorial.' 
-            : 'Switch to Admin tab to create and manage your own groups.'}
-        </Text>
-      </View>
+      {activeTab === 'your' && (
+        <TouchableOpacity
+          style={styles.emptyButton}
+          activeOpacity={0.8}
+          onPress={() => navigation.navigate('CreateGroup')}
+        >
+          <Ionicons name="add-circle-outline" size={20} color="#ffffff" />
+          <Text style={styles.emptyButtonText}>Create Group</Text>
+        </TouchableOpacity>
+      )}
     </View>
   ), [activeTab, navigation]);
 
   const currentGroups = groupsData[activeTab] || [];
 
   // FlatList render functions
-  const renderGroupItem = useCallback(({ item }) => renderGroupCard(item), [renderGroupCard]);
+  const renderGroupItem = useCallback(({ item }) => {
+    if (!item?.id) return null;
+    return renderGroupCard(item);
+  }, [renderGroupCard]);
 
   const renderListHeader = useCallback(() => (
     <View>
@@ -542,7 +440,7 @@ const GroupsScreen = ({ route }) => {
     <View style={styles.listFooter} />
   ), []);
 
-  const keyExtractor = useCallback((item) => item.id.toString(), []);
+  const keyExtractor = useCallback((item, index) => (item?.id?.toString() || index.toString()), []);
 
   return (
     <View style={styles.container}>
@@ -892,207 +790,56 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
-  // Empty State - Enhanced Beautiful Design
+  // Empty State - Clean simple design
   emptyState: {
-    flex: 1,
     alignItems: 'center',
-    paddingVertical: 40,
-    paddingHorizontal: 24,
-    position: 'relative',
+    paddingVertical: 60,
+    paddingHorizontal: 32,
   },
-  emptyBackground: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    overflow: 'hidden',
-  },
-  backgroundCircle: {
-    position: 'absolute',
-    borderRadius: 1000,
-    opacity: 0.05,
-  },
-  backgroundCircle1: {
-    width: 200,
-    height: 200,
-    backgroundColor: '#06b6d4',
-    top: -50,
-    right: -50,
-  },
-  backgroundCircle2: {
-    width: 150,
-    height: 150,
-    backgroundColor: '#10b981',
-    bottom: -30,
-    left: -40,
-  },
-  backgroundCircle3: {
+  emptyIconContainer: {
     width: 100,
     height: 100,
-    backgroundColor: '#8b5cf6',
-    top: '40%',
-    left: -20,
-  },
-  
-  // Illustration
-  emptyIllustration: {
-    marginBottom: 32,
-    alignItems: 'center',
-  },
-  illustrationContainer: {
-    position: 'relative',
+    borderRadius: 50,
+    backgroundColor: '#f0fdfa',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  centralIconContainer: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: '#ffffff',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#06b6d4',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.15,
-    shadowRadius: 24,
-    elevation: 8,
-    borderWidth: 3,
-    borderColor: '#f0fdfa',
-  },
-  floatingElement: {
-    position: 'absolute',
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#ffffff',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  floatingElement1: {
-    top: -10,
-    right: -20,
-  },
-  floatingElement2: {
-    bottom: 10,
-    left: -25,
-  },
-  floatingElement3: {
-    top: 30,
-    left: -35,
-  },
-  
-  // Content
-  emptyContent: {
-    alignItems: 'center',
-    maxWidth: 320,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: '#e0f2fe',
   },
   emptyTitle: {
-    fontSize: 24,
-    fontWeight: '800',
+    fontSize: 20,
+    fontWeight: '700',
     color: '#0f172a',
-    marginBottom: 12,
+    marginBottom: 10,
     textAlign: 'center',
-    letterSpacing: -0.5,
   },
   emptySubtitle: {
-    fontSize: 16,
+    fontSize: 14,
     color: '#64748b',
     textAlign: 'center',
-    lineHeight: 24,
-    marginBottom: 32,
+    lineHeight: 22,
+    marginBottom: 28,
     fontWeight: '500',
   },
-  
-  // Feature Highlights
-  featureHighlights: {
-    width: '100%',
-    marginBottom: 32,
-  },
-  featureItem: {
+  emptyButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    marginBottom: 8,
-  },
-  featureIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#f8fafc',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  featureText: {
-    fontSize: 14,
-    color: '#475569',
-    fontWeight: '600',
-    flex: 1,
-  },
-  
-  // Actions
-  emptyActions: {
-    width: '100%',
-    marginBottom: 24,
-  },
-  memberEmptyActions: {
-    width: '100%',
-    gap: 12,
-  },
-  primaryActionButton: {
     backgroundColor: '#06b6d4',
-    borderRadius: 16,
-    paddingVertical: 16,
     paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 12,
+    gap: 8,
     shadowColor: '#06b6d4',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 6,
-    marginBottom: 12,
-  },
-  secondaryActionButton: {
-    backgroundColor: '#ffffff',
-    borderRadius: 16,
-    paddingVertical: 16,
-    paddingHorizontal: 24,
-    borderWidth: 2,
-    borderColor: '#06b6d4',
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
+    shadowOpacity: 0.25,
     shadowRadius: 8,
-    elevation: 2,
+    elevation: 5,
   },
-  actionButtonContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-  },
-  primaryActionText: {
-    fontSize: 16,
+  emptyButtonText: {
+    fontSize: 15,
     fontWeight: '700',
     color: '#ffffff',
-  },
-  secondaryActionText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#06b6d4',
-  },
-  emptyHelpText: {
-    fontSize: 13,
-    color: '#9ca3af',
-    textAlign: 'center',
-    fontWeight: '500',
-    fontStyle: 'italic',
   },
 
   // Skeleton Loading Styles

@@ -5,7 +5,6 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  SafeAreaView,
   StatusBar,
   ScrollView,
   Modal,
@@ -15,6 +14,7 @@ import {
   KeyboardAvoidingView,
   Platform
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 
@@ -261,7 +261,7 @@ const ExpensesScreen = ({ navigation }) => {
   const isFilterActive = filterType !== 'All' || fromDay !== '01' || toDay !== '21';
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['bottom']}>
       <StatusBar barStyle="dark-content" backgroundColor="#f8fffe" />
 
       <ScrollView
@@ -279,7 +279,13 @@ const ExpensesScreen = ({ navigation }) => {
           <View style={styles.headerActions}>
             <TouchableOpacity
               style={[styles.iconActionButton, isFilterActive && styles.iconActionButtonActive]}
-              onPress={() => setFilterModalVisible(true)}
+              onPress={() => {
+                if (isFilterActive) {
+                  handleResetFilters(); // Deselect/reset filters if already active
+                } else {
+                  setFilterModalVisible(true); // Open modal if no filter active
+                }
+              }}
               activeOpacity={0.7}
             >
               <Ionicons
@@ -413,7 +419,7 @@ const ExpensesScreen = ({ navigation }) => {
 
       {/* --- POPUP INTERACTIVE CONFIGURATIONS POPUP BOTTOM SHEET --- */}
       <Modal visible={filterModalVisible} transparent animationType="slide" onRequestClose={() => setFilterModalVisible(false)}>
-        <SafeAreaView style={styles.modalOverlay}>
+        <View style={styles.modalOverlay}>
           <View style={styles.addSheet}>
             <View style={styles.sheetHeader}>
               <TouchableOpacity onPress={() => setFilterModalVisible(false)} activeOpacity={0.7} style={{ padding: 4 }}>
@@ -477,12 +483,12 @@ const ExpensesScreen = ({ navigation }) => {
               </TouchableOpacity>
             </View>
           </View>
-        </SafeAreaView>
+        </View>
       </Modal>
 
       {/* TRANSACTION INPUT MODAL SHEET */}
       <Modal visible={addModalVisible} transparent animationType="slide" onRequestClose={() => setAddModalVisible(false)}>
-        <SafeAreaView style={styles.modalOverlay}>
+        <View style={styles.modalOverlay}>
           <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             style={{ flex: 1, justifyContent: 'flex-end' }}
@@ -642,7 +648,7 @@ const ExpensesScreen = ({ navigation }) => {
               </View>
             </View>
           </KeyboardAvoidingView>
-        </SafeAreaView>
+        </View>
       </Modal>
 
       {/* DATE SUBMODAL CONFIG */}
@@ -1063,7 +1069,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 24,
     maxHeight: '88%',
     minHeight: '45%',
-    paddingBottom: Platform.OS === 'ios' ? 20 : 10,
+    paddingBottom: Platform.OS === 'ios' ? 34 : 16, // Proper safe area bottom padding
   },
   sheetHeader: {
     flexDirection: 'row',
