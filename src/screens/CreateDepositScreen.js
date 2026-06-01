@@ -17,15 +17,27 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import { useAuth } from '../context/AuthContext';
+import { depositsService } from '../services/depositsService';
+import { filesService } from '../services/filesService';
+import { usersService } from '../services/usersService';
+import { groupsService } from '../services/groupsService';
+import { Modal, FlatList } from 'react-native';
 
 const CreateDepositScreen = ({ navigation, route }) => {
   const { groupName = 'Chichory', groupData } = route?.params || {};
+  const { token, user } = useAuth();
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
   const [selectedMethod, setSelectedMethod] = useState('bank_transfer');
   const [selectedType, setSelectedType] = useState('deposit');
   const [loading, setLoading] = useState(false);
   const [receiptImage, setReceiptImage] = useState(null);
+  const [members, setMembers] = useState([]);
+  const [membersLoading, setMembersLoading] = useState(false);
+  const [memberPickerVisible, setMemberPickerVisible] = useState(false);
+  const [selectedReceiverId, setSelectedReceiverId] = useState(null);
+  const [selectedReceiverEmail, setSelectedReceiverEmail] = useState(null);
 
   const depositTypes = [
     { 
@@ -139,6 +151,37 @@ const CreateDepositScreen = ({ navigation, route }) => {
     setReceiptImage(null);
   };
 
+  const resolveReceiverId = () => {
+    if (selectedReceiverId) return selectedReceiverId;
+    if (route?.params?.receiverId) return route.params.receiverId;
+    return user?.person_id || user?.id || user?.user_id || null;
+  };
+
+  // Fetch group members for member picker
+  useEffect(() => {
+    const groupId = route?.params?.groupId || groupData?.id;
+    if (!token || !groupId) return;
+    let mounted = true;
+    setMembersLoading(true);
+    groupsService.getGroup(token, groupId)
+      .then((data) => {
+        if (!mounted) return;
+        const raw = data?.data || data;
+        const participants = raw?.participants || raw?.members || [];
+        const list = participants.map(p => ({
+          id: p.person_id || p.id,
+          name: p.person?.fullname || p.person?.username || p.name || 'Unknown',
+          email: p.person?.email || p.email || '',
+        }));
+        setMembers(list);
+      })
+      .catch(err => console.log('Fetch members failed', err.message))
+      .finally(() => setMembersLoading(false));
+    return () => { mounted = false; };
+  }, [token, route?.params?.groupId, groupData]);
+
+  const normalizeDepositResponse = (payload) => payload?.data?.deposit || payload?.data || payload?.deposit || payload;
+
   const handleCreateDeposit = async () => {
     if (!amount.trim()) {
       Alert.alert('Error', 'Please enter an amount');
@@ -162,39 +205,68 @@ const CreateDepositScreen = ({ navigation, route }) => {
       return;
     }
 
+    let receiverId = resolveReceiverId();
+    const groupId = route?.params?.groupId || groupData?.id;
+    if (!groupId) {
+      Alert.alert('Error', 'Missing group id for this deposit request.');
+      return;
+    }
+    // If receiverId not provided yet, try route param email lookup
+    if (!receiverId && route?.params?.receiverEmail) {
+      try {
+        const lookup = await usersService.getUserByEmail(token, route.params.receiverEmail);
+        const found = (lookup?.data && lookup.data.length > 0) ? lookup.data[0] : null;
+        if (found && found.id) {
+          receiverId = found.id;
+        }
+      } catch (err) {
+        // ignore and let the missing receiverId error show below
+        console.log('User lookup failed', err.message);
+      }
+    }
+    if (!receiverId) {
+      Alert.alert('Error', 'Missing receiver id for this deposit request.');
+      return;
+    }
+
     setLoading(true);
-    
-    // Create new deposit object
-    const newDeposit = {
-      id: Date.now(),
-      type: selectedType,
-      amount: parseFloat(amount),
-      note: note.trim(),
-      method: selectedMethod,
-      date: new Date().toISOString(),
-      status: selectedType === 'request' ? 'pending' : 'completed',
-      from: selectedType === 'deposit' ? 'You' : 'Group Fund',
-      to: selectedType === 'deposit' ? 'Group Fund' : 'You',
-      category: 'General',
-      receipt: receiptImage ? receiptImage.uri : null
-    };
-    
-    // Simulate API call
-    setTimeout(() => {
+
+    try {
+      let attachmentUrl = null;
+
+      if (receiptImage) {
+        const uploadResponse = await filesService.uploadFile(token, receiptImage, 'receipts');
+        const uploadData = uploadResponse?.data || uploadResponse;
+        attachmentUrl = uploadData?.url || uploadData?.file_url || uploadData?.path || uploadData?.location || null;
+      }
+
+      const response = await depositsService.createDeposit(token, {
+        group_id: groupId,
+        receiver_id: receiverId,
+        amount: parseFloat(amount),
+        deposit_type: selectedMethod.toUpperCase(),
+        description: `${selectedType.toUpperCase()}: ${note.trim()}`,
+        attachment_url: attachmentUrl,
+      });
+
+      const createdDeposit = normalizeDepositResponse(response);
       setLoading(false);
       Alert.alert(
-        'Success', 
+        'Success',
         `${selectedType.charAt(0).toUpperCase() + selectedType.slice(1)} created successfully!`,
         [
           {
             text: 'OK',
             onPress: () => {
-              navigation.navigate('Deposits', { newDeposit });
+              navigation.navigate('Deposits', { groupName, groupId, groupData, newDeposit: createdDeposit });
             }
           }
         ]
       );
-    }, 1500);
+    } catch (error) {
+      setLoading(false);
+      Alert.alert('Error', error.message || 'Could not create deposit. Please try again.');
+    }
   };
 
   return (
@@ -402,6 +474,25 @@ const CreateDepositScreen = ({ navigation, route }) => {
               </View>
             )}
 
+            {/* Receiver Selector */}
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Receiver</Text>
+              <Text style={styles.sectionSubtitle}>Choose a group member to receive this transaction (optional)</Text>
+              <TouchableOpacity
+                style={[styles.amountContainer, { paddingVertical: 12, paddingHorizontal: 16 }]}
+                onPress={() => setMemberPickerVisible(true)}
+                activeOpacity={0.8}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 16, fontWeight: '600', color: '#0f172a' }}>
+                    {selectedReceiverEmail || 'Select a member...'}
+                  </Text>
+                </View>
+                <Ionicons name="chevron-down" size={20} color="#64748b" />
+              </TouchableOpacity>
+
+            </View>
+
             {/* Note Input */}
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Note / Description</Text>
@@ -479,6 +570,38 @@ const CreateDepositScreen = ({ navigation, route }) => {
                 </>
               )}
             </TouchableOpacity>
+
+            {/* Member Picker Modal */}
+            <Modal
+              visible={memberPickerVisible}
+              animationType="slide"
+              onRequestClose={() => setMemberPickerVisible(false)}
+            >
+              <SafeAreaView style={{ flex: 1, backgroundColor: '#f8fffe' }}>
+                <View style={{ padding: 16, borderBottomWidth: 1, borderBottomColor: '#e2e8f0', backgroundColor: '#ffffff' }}>
+                  <Text style={{ fontSize: 18, fontWeight: '700', textAlign: 'center' }}>Select Member</Text>
+                </View>
+                <FlatList
+                  data={members}
+                  keyExtractor={(item) => String(item.id)}
+                  renderItem={({ item }) => (
+                    <TouchableOpacity
+                      style={{ padding: 16, borderBottomWidth: 1, borderBottomColor: '#f1f5f9', backgroundColor: '#ffffff' }}
+                      onPress={() => {
+                        setSelectedReceiverId(item.id);
+                        setSelectedReceiverEmail(item.email);
+                        setMemberPickerVisible(false);
+                      }}
+                    >
+                      <Text style={{ fontSize: 16, fontWeight: '600' }}>{item.name}</Text>
+                      <Text style={{ fontSize: 13, color: '#64748b', marginTop: 4 }}>{item.email}</Text>
+                    </TouchableOpacity>
+                  )}
+                  ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
+                  contentContainerStyle={{ padding: 8 }}
+                />
+              </SafeAreaView>
+            </Modal>
 
             {/* Extra spacing for keyboard */}
             <View style={styles.keyboardSpacer} />

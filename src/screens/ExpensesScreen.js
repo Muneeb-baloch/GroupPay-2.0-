@@ -17,6 +17,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import PillSelector from '../components/PillSelector';
+import ActionFooter from '../components/ActionFooter';
+import { createUniqueId } from '../utils/helpers';
 
 const { width } = Dimensions.get('window');
 
@@ -87,7 +90,7 @@ const CATEGORIES = [
   { name: 'Other', icon: 'grid-outline', color: '#64748b' }
 ];
 
-const ExpensesScreen = ({ navigation }) => {
+const ExpensesScreen = ({ navigation, route }) => {
   const [transactions, setTransactions] = useState(INITIAL_TRANSACTIONS);
   const [activeTimeframe, setActiveTimeframe] = useState('Monthly');
   const [filterType, setFilterType] = useState('All');
@@ -121,6 +124,13 @@ const ExpensesScreen = ({ navigation }) => {
   const [pickerYear, setPickerYear] = useState(new Date().getFullYear().toString());
   const [pickerHour, setPickerHour] = useState('20');
   const [pickerMin, setPickerMin] = useState('45');
+
+  useEffect(() => {
+    if (route?.params?.openAddSheet) {
+      setAddModalVisible(true);
+      navigation.setParams({ openAddSheet: false });
+    }
+  }, [navigation, route?.params?.openAddSheet]);
 
   // Compute Functional State List Processing
   const getFilteredTransactions = () => {
@@ -209,7 +219,7 @@ const ExpensesScreen = ({ navigation }) => {
     if (!title.trim()) return Alert.alert('Error', 'Please enter title/location.');
 
     const newTx = {
-      id: Date.now(),
+      id: createUniqueId('tx'),
       title: title.trim(),
       type: expenseType,
       amount: amtNum,
@@ -458,20 +468,17 @@ const ExpensesScreen = ({ navigation }) => {
 
               <View style={styles.typesRow}>
                 <Text style={styles.typeSelectorLabel}>Transaction Type</Text>
-                <View style={styles.typeButtonsRow}>
-                  {['All', 'Income', 'Expense'].map(type => (
-                    <TouchableOpacity
-                      key={type}
-                      style={[styles.typeSelectBtn, filterType === type && styles.typeSelectBtnActive]}
-                      onPress={() => setFilterType(type)}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={[styles.typeSelectText, filterType === type && styles.typeSelectTextActive]}>
-                        {type}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
+                <PillSelector
+                  mode="segmented"
+                  selectedKey={filterType}
+                  onSelect={setFilterType}
+                  containerStyle={styles.typeButtonsRow}
+                  items={[
+                    { key: 'All', label: 'All', icon: 'layers-outline' },
+                    { key: 'Income', label: 'Income', icon: 'trending-up-outline' },
+                    { key: 'Expense', label: 'Expense', icon: 'trending-down-outline' },
+                  ]}
+                />
               </View>
 
               <TouchableOpacity
@@ -523,26 +530,16 @@ const ExpensesScreen = ({ navigation }) => {
                   </View>
                 </View>
 
-                <View style={styles.modalPillContainer}>
-                  <TouchableOpacity
-                    style={[styles.modalPill, expenseType === 'Expense' && styles.modalPillActive]}
-                    onPress={() => setExpenseType('Expense')}
-                    activeOpacity={0.75}
-                  >
-                    <Text style={[styles.modalPillText, expenseType === 'Expense' && styles.modalPillTextActive]}>
-                      Expense
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.modalPill, expenseType === 'Income' && styles.modalPillActive]}
-                    onPress={() => setExpenseType('Income')}
-                    activeOpacity={0.75}
-                  >
-                    <Text style={[styles.modalPillText, expenseType === 'Income' && styles.modalPillTextActive]}>
-                      Income
-                    </Text>
-                  </TouchableOpacity>
-                </View>
+                <PillSelector
+                  mode="segmented"
+                  selectedKey={expenseType}
+                  onSelect={setExpenseType}
+                  containerStyle={styles.modalPillContainer}
+                  items={[
+                    { key: 'Expense', label: 'Expense', icon: 'trending-down-outline' },
+                    { key: 'Income', label: 'Income', icon: 'trending-up-outline' },
+                  ]}
+                />
 
                 <View style={styles.modalFormCard}>
                   <View style={styles.modalFormRow}>
@@ -560,27 +557,16 @@ const ExpensesScreen = ({ navigation }) => {
                   <View style={[styles.modalFormRow, { flexWrap: 'wrap', height: 'auto', paddingVertical: 12 }]}>
                     <Ionicons name="grid-outline" size={16} color="#64748b" style={{ marginRight: 10, marginTop: 4 }} />
                     <Text style={styles.modalRowLabel}>Category</Text>
-                    <View style={styles.catChipsContainer}>
-                      {CATEGORIES.map((cat, idx) => {
-                        const isSelected = selectedCategory.name === cat.name;
-                        return (
-                          <TouchableOpacity
-                            key={idx}
-                            style={[
-                              styles.catChip,
-                              isSelected && { backgroundColor: `${cat.color}12`, borderColor: cat.color }
-                            ]}
-                            onPress={() => setSelectedCategory(cat)}
-                            activeOpacity={0.7}
-                          >
-                            <Ionicons name={cat.icon} size={11} color={isSelected ? cat.color : '#64748b'} style={{ marginRight: 4 }} />
-                            <Text style={[styles.catChipText, isSelected && { color: cat.color, fontWeight: '700' }]}>
-                              {cat.name}
-                            </Text>
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </View>
+                    <PillSelector
+                      selectedKey={selectedCategory.name}
+                      onSelect={(key) => setSelectedCategory(CATEGORIES.find(cat => cat.name === key) || CATEGORIES[0])}
+                      containerStyle={styles.catChipsContainer}
+                      items={CATEGORIES.map(cat => ({
+                        key: cat.name,
+                        label: cat.name,
+                        icon: cat.icon,
+                      }))}
+                    />
                   </View>
 
                   <TouchableOpacity
@@ -638,14 +624,12 @@ const ExpensesScreen = ({ navigation }) => {
                 <View style={{ height: 40 }} />
               </ScrollView>
 
-              <View style={styles.sheetFooter}>
-                <TouchableOpacity style={styles.sheetCancelBtn} onPress={() => setAddModalVisible(false)} activeOpacity={0.7}>
-                  <Text style={styles.sheetCancelBtnText}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.sheetSaveBtn} onPress={handleAddExpense} activeOpacity={0.7}>
-                  <Text style={styles.sheetSaveBtnText}>Save Expense</Text>
-                </TouchableOpacity>
-              </View>
+              <ActionFooter
+                cancelLabel="Cancel"
+                confirmLabel="Save Expense"
+                onCancel={() => setAddModalVisible(false)}
+                onConfirm={handleAddExpense}
+              />
             </View>
           </KeyboardAvoidingView>
         </View>
@@ -678,9 +662,12 @@ const ExpensesScreen = ({ navigation }) => {
                 <TextInput style={styles.pickerInput} value={pickerMin} onChangeText={setPickerMin} keyboardType="numeric" maxLength={2} />
               </View>
 
-              <TouchableOpacity style={styles.saveDateButton} onPress={handleApplyDateTime} activeOpacity={0.7}>
-                <Text style={styles.saveDateButtonText}>Apply Date</Text>
-              </TouchableOpacity>
+              <ActionFooter
+                cancelLabel="Cancel"
+                confirmLabel="Apply Date"
+                onCancel={() => setDateModalVisible(false)}
+                onConfirm={handleApplyDateTime}
+              />
             </View>
           </View>
         </View>

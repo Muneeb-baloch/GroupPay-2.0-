@@ -35,8 +35,29 @@ const TransactionsScreen = ({ route }) => {
     if (!token) return;
     try {
       const data = await transactionsService.getTransactions(token, { groupId });
-      const raw = data?.data?.transactions || data?.data || data?.transactions || [];
-      setTransactions(Array.isArray(raw) ? raw : []);
+      // Handle all possible response shapes
+      const raw = data?.data?.data || data?.data?.transactions || data?.data || data?.transactions || [];
+      const list = Array.isArray(raw) ? raw : [];
+
+      // Normalize API transaction shape to match UI expectations
+      const normalized = list.map((t, i) => ({
+        id: t.transaction_id || t.id || i,
+        transaction_id: t.transaction_id || t.id,
+        name: t.person?.fullname || t.person?.username || t.description || 'Transaction',
+        type: t.type?.toLowerCase() === 'credit' ? 'payment' : 'expense',
+        category: t.scene?.location || t.description || 'Transaction',
+        description: t.description || '',
+        amount: parseFloat(t.amount || 0),
+        date: t.created_at || t.createdAt || new Date().toISOString(),
+        status: 'completed',
+        participants: [],
+        splitAmount: parseFloat(t.amount || 0),
+        icon: t.type?.toLowerCase() === 'credit' ? 'card' : 'receipt',
+        color: t.type?.toLowerCase() === 'credit' ? '#10b981' : '#f59e0b',
+        groupId: t.group_id || groupId,
+      }));
+
+      setTransactions(normalized);
 
       // Also fetch summary if groupId is available
       if (groupId) {
@@ -44,7 +65,7 @@ const TransactionsScreen = ({ route }) => {
           const summaryData = await transactionsService.getGroupSummary(token, groupId);
           setSummary(summaryData?.data || summaryData);
         } catch {
-          // Summary is optional, don't fail if it errors
+          // Summary is optional
         }
       }
     } catch (error) {
@@ -58,11 +79,11 @@ const TransactionsScreen = ({ route }) => {
     fetchTransactions();
   }, [fetchTransactions]);
 
-  // Balance summary from API summary or groupData
+  // Balance summary from API — handles various response shapes
   const balanceSummary = {
-    totalCredits: summary?.total_credits || summary?.totalCredits || 0,
-    totalDebits: summary?.total_debits || summary?.totalDebits || 0,
-    netBalance: summary?.net_balance || summary?.netBalance || groupData?.totalBalance || 0,
+    totalCredits: summary?.total_credits || summary?.totalCredits || summary?.data?.total_credits || 0,
+    totalDebits: summary?.total_debits || summary?.totalDebits || summary?.data?.total_debits || 0,
+    netBalance: summary?.net_balance || summary?.netBalance || summary?.data?.net_balance || groupData?.totalBalance || 0,
   };
 
   const handleRefresh = useCallback(async () => {
@@ -473,7 +494,9 @@ const TransactionsScreen = ({ route }) => {
     );
   }, [selectedFilter]);
 
-  const keyExtractor = useCallback((item) => item.id.toString(), []);
+  const keyExtractor = useCallback((item, index) => 
+    (item?.transaction_id || item?.id || index).toString()
+  , []);
 
   return (
     <SafeAreaView style={styles.container}>

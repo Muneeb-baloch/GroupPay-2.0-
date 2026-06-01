@@ -5,29 +5,91 @@
 import { API_ENDPOINTS, apiCall } from '../config/api';
 import { extractGroupsFromResponse, normalizeGroup } from '../utils/helpers';
 
+const toBool = (v) => v === true || v === 1 || v === '1' || v === 'true';
+
+const isAdminRoleText = (role) => {
+  const value = (role || '').toString().toLowerCase();
+  return value === 'admin' || value === 'owner' || value === 'creator';
+};
+
+const hasRoleText = (role) => {
+  const value = (role || '').toString().trim();
+  return value.length > 0;
+};
+
+const isAdminForGroup = (rawGroup, currentUserId) => {
+  const roleText = rawGroup?.role || rawGroup?.user_role || rawGroup?.member_role || rawGroup?.my_role;
+  if (hasRoleText(roleText)) return isAdminRoleText(roleText);
+
+  if (rawGroup?.is_admin !== undefined || rawGroup?.is_owner !== undefined) {
+    return toBool(rawGroup?.is_admin) || toBool(rawGroup?.is_owner);
+  }
+
+  const creatorId =
+    rawGroup?.created_by ||
+    rawGroup?.creator_id ||
+    rawGroup?.owner_id ||
+    rawGroup?.admin_id ||
+    rawGroup?.group?.created_by ||
+    rawGroup?.group?.creator_id ||
+    rawGroup?.group?.owner_id;
+
+  if (currentUserId && creatorId != null) {
+    return String(creatorId) === String(currentUserId);
+  }
+
+  const participants = rawGroup?.participants || rawGroup?.members || rawGroup?.group?.participants || [];
+  if (currentUserId && Array.isArray(participants)) {
+    const me = participants.find((p) => String(p?.person_id || p?.person?.id || p?.id) === String(currentUserId));
+    if (me) {
+      const pRole = me?.role || me?.user_role;
+      if (hasRoleText(pRole)) return isAdminRoleText(pRole);
+      if (me?.is_admin !== undefined || me?.is_owner !== undefined) {
+        return toBool(me?.is_admin) || toBool(me?.is_owner);
+      }
+      return false;
+    }
+  }
+
+  return false;
+};
+
+const isVisibleGroup = (rawGroup) => {
+  const status = (rawGroup?.status || rawGroup?.group_status || '').toString().toLowerCase();
+  const deleted =
+    toBool(rawGroup?.is_deleted) ||
+    toBool(rawGroup?.deleted) ||
+    rawGroup?.deleted_at != null ||
+    rawGroup?.group?.deleted_at != null;
+  const inactive = rawGroup?.is_active === false || status === 'inactive' || status === 'deleted' || status === 'archived';
+
+  return !deleted && !inactive;
+};
+
 export const groupsService = {
   /**
    * Fetch all groups for the current user
    * Returns normalized groups split into admin/member
    */
-  fetchGroups: async (token) => {
+  fetchGroups: async (token, currentUserId = null) => {
     const data = await apiCall(API_ENDPOINTS.groups, 'GET', null, token);
-    const raw = extractGroupsFromResponse(data);
-
-    const adminGroups = raw.filter(g => {
-      const role = g.role || g.user_role;
-      return !role || role === 'admin' || role === 'owner';
+    const raw = extractGroupsFromResponse(data).filter(isVisibleGroup);
+    const normalized = raw.map((g, i) => {
+      const normalizedGroup = normalizeGroup(g, i);
+      const admin = isAdminForGroup(g, currentUserId);
+      return {
+        ...normalizedGroup,
+        role: admin ? 'admin' : 'member',
+      };
     });
 
-    const memberGroups = raw.filter(g => {
-      const role = g.role || g.user_role;
-      return role && role !== 'admin' && role !== 'owner';
-    });
+    const adminGroups = normalized.filter((g) => g.role === 'admin');
+    const memberGroups = normalized.filter((g) => g.role !== 'admin');
 
     return {
-      your: adminGroups.map((g, i) => normalizeGroup(g, i)),
-      member: memberGroups.map((g, i) => normalizeGroup(g, i)),
-      all: raw.map((g, i) => normalizeGroup(g, i)),
+      your: adminGroups,
+      member: memberGroups,
+      all: normalized,
     };
   },
 

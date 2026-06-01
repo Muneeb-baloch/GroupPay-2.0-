@@ -22,34 +22,15 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
+import PillSelector from '../components/PillSelector';
+import ActionFooter from '../components/ActionFooter';
+import { createUniqueId, getInitials } from '../utils/helpers';
+import { groupsService } from '../services/groupsService';
+import { useAuth } from '../context/AuthContext';
+import { scenesService } from '../services/scenesService';
+import { filesService } from '../services/filesService';
 
 const { width, height } = Dimensions.get('window');
-
-// Mock groups
-const GROUPS_DATA = [
-  {
-    id: 1,
-    name: 'Testing',
-    color: '#06b6d4',
-    members: [
-      { id: 1, name: 'Muneeb ur Rehman', avatar: 'MU', color: '#8b5cf6', isYou: true }
-    ]
-  },
-  {
-    id: 2,
-    name: 'Chichory',
-    color: '#8b5cf6',
-    members: [
-      { id: 1, name: 'Muneeb ur Rehman', avatar: 'MU', color: '#8b5cf6', isYou: true },
-      { id: 2, name: 'Yasir Uddin', avatar: 'YU', color: '#06b6d4', isYou: false },
-      { id: 3, name: 'Ahmad Hassan', avatar: 'AH', color: '#10b981', isYou: false },
-      { id: 4, name: 'Sarah Khan', avatar: 'SK', color: '#f59e0b', isYou: false },
-      { id: 5, name: 'Hassan Niaz', avatar: 'HN', color: '#10b981', isYou: false },
-      { id: 6, name: 'Umer Javed', avatar: 'UJ', color: '#f59e0b', isYou: false },
-      { id: 7, name: 'Muneeb Yasin', avatar: 'MY', color: '#06b6d4', isYou: false }
-    ]
-  }
-];
 
 const MOCK_MAP_PLACES = [
   { name: 'Tummy Cafe', address: 'Plot 12, Commercial Area, Sector F-11, Islamabad' },
@@ -61,25 +42,30 @@ const MOCK_MAP_PLACES = [
   { name: 'Giga Mall Coffee Shop', address: 'GT Road, Phase 2, DHA, Islamabad' }
 ];
 
-const CreateSceneScreen = ({ navigation }) => {
+const CreateSceneScreen = ({ navigation, route }) => {
   const [sceneTitle, setSceneTitle] = useState('');
-  const [selectedGroup, setSelectedGroup] = useState(GROUPS_DATA[1]);
+  const [selectedGroup, setSelectedGroup] = useState(null);
+  const [groupsList, setGroupsList] = useState([]);
+  const [groupsLoading, setGroupsLoading] = useState(false);
   const [location, setLocation] = useState('');
   const [dateTime, setDateTime] = useState('');
-  const [calculatorExpr, setCalculatorExpr] = useState('');
   const [totalBill, setTotalBill] = useState('');
   const [description, setDescription] = useState('');
   const [attachmentImage, setAttachmentImage] = useState(null);
 
   const [activeSplitTab, setActiveSplitTab] = useState('sharing');
   const [selectedParticipants, setSelectedParticipants] = useState([]);
+  const [groupMembers, setGroupMembers] = useState([]);
   const [individualShares, setIndividualShares] = useState({});
+  const [participantPaid, setParticipantPaid] = useState({});
 
   // Modals
   const [groupModalVisible, setGroupModalVisible] = useState(false);
   const [mapModalVisible, setMapModalVisible] = useState(false);
   const [dateModalVisible, setDateModalVisible] = useState(false);
   const [memberModalVisible, setMemberModalVisible] = useState(false);
+  const [modalSelectedIds, setModalSelectedIds] = useState([]);
+  const [debugRawGroup, setDebugRawGroup] = useState(null);
 
   // Map simulation
   const [mapSearchText, setMapSearchText] = useState('');
@@ -96,16 +82,184 @@ const CreateSceneScreen = ({ navigation }) => {
   const [pickerMin, setPickerMin] = useState(new Date().getMinutes().toString().padStart(2, '0'));
   const [pickerPeriod, setPickerPeriod] = useState(new Date().getHours() >= 12 ? 'PM' : 'AM');
 
+  const getGroupMemberCount = (group) => {
+    const rawMembers = group?.members;
+    if (Array.isArray(rawMembers)) return rawMembers.length;
+    if (typeof rawMembers === 'number') return rawMembers;
+    if (typeof rawMembers === 'string' && rawMembers.trim() !== '' && !Number.isNaN(Number(rawMembers))) return Number(rawMembers);
+
+    const participantCount = group?.participant_count ?? group?.participants_count ?? group?.member_count ?? group?.members_count;
+    if (typeof participantCount === 'number') return participantCount;
+    if (typeof participantCount === 'string' && participantCount.trim() !== '' && !Number.isNaN(Number(participantCount))) return Number(participantCount);
+
+    const participants = group?.participants || group?.group?.participants || [];
+    if (Array.isArray(participants)) return participants.length;
+    return 0;
+  };
+
   useEffect(() => {
-    if (selectedGroup) {
-      setSelectedParticipants(selectedGroup.members);
-      const shares = {};
-      selectedGroup.members.forEach(m => {
-        shares[m.id] = '';
-      });
-      setIndividualShares(shares);
-    }
+    let mounted = true;
+    const loadMembersForGroup = async () => {
+      if (!selectedGroup) return;
+      setSelectedParticipants([]);
+      setIndividualShares({});
+      setParticipantPaid({});
+      // If selectedGroup already has a members array, use it; otherwise fetch full group
+      if (Array.isArray(selectedGroup.members) && selectedGroup.members.length > 0 && typeof selectedGroup.members[0] === 'object') {
+        const members = selectedGroup.members.map(m => ({
+          id: m.person_id || m.id,
+          name: m.person?.fullname || m.name || m.person?.username || 'Unknown',
+          avatar: getInitials(m.person?.fullname || m.name || m.person?.username || 'U'),
+          imageUrl: m.person?.profile_picture_url || m.person?.avatar_url || m.profile_picture_url || m.avatar_url || m.image_url || m.imageUrl || null,
+          color: m.color || '#8b5cf6',
+          isYou: String(m.person_id || m.id) === String(user?.person_id || user?.id)
+        }));
+        if (!mounted) return;
+        setGroupMembers(members);
+        setSelectedParticipants([]);
+        setModalSelectedIds([]);
+        return;
+      }
+
+      if (!token) return;
+      try {
+        const g = await groupsService.getGroup(token, selectedGroup.id);
+        const raw = g?.data || g;
+        console.log('CreateScene: getGroup raw response for', selectedGroup.id, raw);
+        setDebugRawGroup(raw);
+        // Try several common nested shapes for participants
+        const participants =
+          raw?.participants ||
+          raw?.members ||
+          raw?.group_participants ||
+          raw?.data?.group_participants ||
+          raw?.data?.participants ||
+          raw?.data?.members ||
+          raw?.data?.data?.participants ||
+          raw?.data?.data?.members ||
+          raw?.items ||
+          raw?.rows ||
+          raw?.members_list ||
+          raw?.group?.participants ||
+          [];
+        const members = participants.map(p => ({
+          id: p.person_id || p.id,
+          name: p.person?.fullname || p.name || p.person?.username || 'Unknown',
+          avatar: getInitials(p.person?.fullname || p.name || p.person?.username || 'U'),
+          imageUrl: p.person?.profile_picture_url || p.person?.avatar_url || p.profile_picture_url || p.avatar_url || p.image_url || p.imageUrl || null,
+          color: p.color || '#06b6d4',
+          isYou: String(p.person_id || p.id) === String(user?.person_id || user?.id)
+        }));
+        if (!mounted) return;
+        setGroupMembers(members);
+        setSelectedParticipants([]);
+        setModalSelectedIds([]);
+      } catch (err) {
+        // fallback to whatever members are present on selectedGroup
+        console.log('CreateScene: getGroup failed or returned no participants, using fallback selectedGroup:', selectedGroup);
+        setDebugRawGroup(selectedGroup);
+        const fallbackSource = Array.isArray(selectedGroup.members) ? selectedGroup.members : (Array.isArray(selectedGroup.group_participants) ? selectedGroup.group_participants : []);
+        const fallback = fallbackSource.map(m => ({
+          id: m.id,
+          name: m.name,
+          avatar: m.avatar || getInitials(m.name || 'U'),
+          imageUrl: m.imageUrl || m.image_url || m.profile_picture_url || m.avatar_url || null,
+          color: m.color || '#8b5cf6',
+          isYou: !!m.isYou
+        }));
+        if (!mounted) return;
+        setGroupMembers(fallback);
+        setSelectedParticipants([]);
+        setModalSelectedIds([]);
+      }
+    };
+
+    loadMembersForGroup();
+    return () => { mounted = false; };
   }, [selectedGroup]);
+
+  // Fetch only groups where the current user is an admin.
+  useEffect(() => {
+    let mounted = true;
+    const loadGroups = async () => {
+      if (!token) return;
+      setGroupsLoading(true);
+      try {
+        const grouped = await groupsService.fetchGroups(token, user?.person_id || user?.id || null);
+        if (!mounted) return;
+        // Show all admin groups in the selector so the user can pick one.
+        // Validation for minimum member count is enforced at submit time.
+        const adminGroups = (grouped?.your || []);
+        setGroupsList(adminGroups);
+        if (adminGroups.length > 0 && (!selectedGroup || !selectedGroup.id)) {
+          setSelectedGroup(adminGroups[0]);
+          // ensure previous selections are cleared when initial group is set
+          setSelectedParticipants([]);
+          setGroupMembers([]);
+        }
+      
+      } catch (err) {
+        console.log('Groups fetch failed', err.message);
+      } finally {
+        if (mounted) setGroupsLoading(false);
+      }
+    };
+    loadGroups();
+    return () => { mounted = false; };
+  }, [token]);
+
+  // Determine if current user is admin for the selected group
+  const [isGroupAdmin, setIsGroupAdmin] = useState(false);
+
+  const detectAdmin = (group) => {
+    if (!group || !user) return false;
+   
+    if (group.role && String(group.role).toLowerCase() === 'admin') return true;
+    if (group.my_role && String(group.my_role).toLowerCase() === 'admin') return true;
+    if (group.user_role && String(group.user_role).toLowerCase() === 'admin') return true;
+    // explicit flag
+    if (group.is_admin === true || group.is_owner === true) return true;
+    // check participant entries
+    const participants = group.participants || group.members || group.group?.participants || group.group?.members || [];
+    if (Array.isArray(participants) && participants.length > 0) {
+      const me = participants.find(p => String(p.person_id || p.id || p.person?.id) === String(user?.person_id || user?.id));
+      if (me) {
+        const roleText = (me.role || me.user_role || me.member_role || '').toString().toLowerCase();
+        if (roleText === 'admin' || roleText === 'owner' || roleText === 'creator') return true;
+        if (me.is_admin === true || me.is_owner === true) return true;
+      }
+    }
+    return false;
+  };
+
+  useEffect(() => {
+    try {
+      let admin = detectAdmin(selectedGroup);
+      // If not determined, inspect selectedParticipants (populated from API/fallback)
+      if (!admin && Array.isArray(selectedParticipants) && selectedParticipants.length > 0 && user) {
+        const me = selectedParticipants.find(p => String(p.id) === String(user?.person_id || user?.id));
+        if (me) {
+          const roleText = (me.role || me.user_role || me.member_role || '').toString().toLowerCase();
+          if (roleText === 'admin' || roleText === 'owner' || roleText === 'creator') admin = true;
+          if (me.is_admin === true || me.is_owner === true) admin = true;
+        }
+      }
+      setIsGroupAdmin(admin);
+    } catch (e) {
+      setIsGroupAdmin(false);
+    }
+  }, [selectedGroup, user]);
+
+  // Debug: inspect members state to find unintended pre-selection
+  useEffect(() => {
+    try {
+      console.log('CreateScene DEBUG selectedParticipants:', selectedParticipants);
+      console.log('CreateScene DEBUG groupMembers:', groupMembers);
+      console.log('CreateScene DEBUG selectedGroup id/name:', selectedGroup?.id, selectedGroup?.name);
+    } catch (e) {
+      // ignore
+    }
+  }, [selectedParticipants, groupMembers, selectedGroup]);
 
   const triggerPinBounce = () => {
     Animated.sequence([
@@ -140,27 +294,6 @@ const CreateSceneScreen = ({ navigation }) => {
       setFetchingLocation(false);
     }
   };
-
-  const evaluateCalculator = (expr) => {
-    if (!expr.trim() || !/^[0-9.+\-*/\s()]+$/.test(expr)) return null;
-    try {
-      const result = new Function(`return ${expr}`)();
-      if (typeof result === 'number' && !isNaN(result) && isFinite(result)) {
-        return Math.round(result * 100) / 100;
-      }
-      return null;
-    } catch (e) {
-      return null;
-    }
-  };
-
-  const calculatedResult = evaluateCalculator(calculatorExpr);
-
-  useEffect(() => {
-    if (calculatedResult !== null) {
-      setTotalBill(calculatedResult.toString());
-    }
-  }, [calculatorExpr]);
 
   useEffect(() => {
     const d = new Date();
@@ -236,51 +369,190 @@ const CreateSceneScreen = ({ navigation }) => {
     );
   };
 
+  const getDisplayFirstName = (fullName) => {
+    const nameText = (fullName || '').toString().trim();
+    if (!nameText) return 'Unknown';
+    return nameText.split(/\s+/)[0];
+  };
+
   const handleIndividualShareChange = (memberId, val) => {
     setIndividualShares(prev => ({ ...prev, [memberId]: val }));
   };
 
-  const handleSubmitScene = () => {
+  const handlePaidChange = (memberId, val) => {
+    setParticipantPaid(prev => ({ ...prev, [memberId]: val }));
+  };
+
+  const { token, user } = useAuth();
+
+  const parseDateTimeToISO = (value) => {
+    if (!value) return new Date().toISOString();
+    try {
+      const [datePart = '', timePartRaw = ''] = value.split(',').map((v) => v.trim());
+      const [day, month, year] = datePart.split('/').map((v) => parseInt(v, 10));
+      if (!day || !month || !year) return new Date().toISOString();
+
+      const [timePart = '00:00', periodRaw = ''] = timePartRaw.split(' ');
+      const [hourRaw = '0', minuteRaw = '0'] = timePart.split(':');
+      let hours = parseInt(hourRaw, 10) || 0;
+      const minutes = parseInt(minuteRaw, 10) || 0;
+      const period = periodRaw.toUpperCase();
+
+      if (period === 'PM' && hours < 12) hours += 12;
+      if (period === 'AM' && hours === 12) hours = 0;
+
+      return new Date(year, month - 1, day, hours, minutes, 0, 0).toISOString();
+    } catch {
+      return new Date().toISOString();
+    }
+  };
+
+  const extractFileUrl = (uploadResponse) => {
+    return (
+      uploadResponse?.data?.url ||
+      uploadResponse?.data?.file_url ||
+      uploadResponse?.data?.fileUrl ||
+      uploadResponse?.url ||
+      uploadResponse?.file_url ||
+      null
+    );
+  };
+
+  const handleSubmitScene = async () => {
+    if (!token) return Alert.alert('Error', 'Please login again.');
     if (!selectedGroup) return Alert.alert('Error', 'Please select a group.');
     if (!location.trim()) return Alert.alert('Error', 'Please enter location.');
     if (totalBillNum <= 0) return Alert.alert('Error', 'Please enter a valid bill amount.');
     if (participantCount === 0) return Alert.alert('Error', 'Please select participants.');
 
+    const selectedGroupMemberCount = Math.max(
+      getGroupMemberCount(selectedGroup) || 0,
+      Array.isArray(selectedParticipants) ? selectedParticipants.length : 0
+    );
+
+    // Require that the current user is an admin of the selected group
+    // and that the group has at least two members (admin + at least one other).
+    if (!(isGroupAdmin && selectedGroupMemberCount >= 2)) {
+      if (!isGroupAdmin) {
+        return Alert.alert(
+          "Can't create scene",
+          "You can't create a scene because you're not an admin of the selected group.",
+          [ { text: 'OK', style: 'cancel' } ]
+        );
+      }
+      return Alert.alert(
+        "Can't create scene",
+        `You can't create a scene because the selected group must have at least two members. (Detected: ${selectedGroupMemberCount})`
+      );
+    }
+
     if (activeSplitTab === 'individual' && Math.abs(remainingToAssign) > 0.01) {
       return Alert.alert('Error', `Individual splits must sum up to the total bill.\nRemaining: Rs ${remainingToAssign}`);
     }
 
-    let yourShare = 0;
-    const currentUser = selectedParticipants.find(p => p.isYou);
-    if (currentUser) {
-      yourShare = activeSplitTab === 'sharing' ? equalSplitAmount : parseFloat(individualShares[currentUser.id]) || 0;
+    // Build participants payload per spec (following SCENE_README.md)
+    // Step 1: Calculate perPersonShare
+    const individualBillSum = activeSplitTab === 'individual'
+      ? selectedParticipants.reduce((sum, p) => sum + (parseFloat(individualShares[p.id]) || 0), 0)
+      : 0;
+
+    const sharingAdditionalSum = activeSplitTab === 'sharing'
+      ? selectedParticipants.reduce((sum, p) => sum + (parseFloat(p.additional_amount) || 0), 0)
+      : 0;
+
+    const shareableAmount = totalBillNum - individualBillSum - sharingAdditionalSum;
+    const perPersonShare = participantCount > 0
+      ? Math.round((shareableAmount / participantCount) * 100) / 100
+      : 0;
+
+    // Step 2: Resolve paid amounts
+    // If no paid amounts entered, assign full bill to the current user (or first participant)
+    const payer = selectedParticipants.find(p => p.isYou) || selectedParticipants[0];
+    const payerId = payer?.id || payer?.personId;
+    const sumPaidInputs = Object.values(participantPaid).reduce((s, v) => s + (parseFloat(v) || 0), 0);
+
+    const resolvedPaid = {};
+    if (Math.abs(sumPaidInputs) < 0.001) {
+      // No one entered paid amounts — assign full bill to payer
+      selectedParticipants.forEach(p => {
+        resolvedPaid[p.id] = p.id === payerId ? Number(totalBillNum.toFixed(2)) : 0;
+      });
+    } else {
+      selectedParticipants.forEach(p => {
+        resolvedPaid[p.id] = Number(parseFloat(participantPaid[p.id] || 0).toFixed(2));
+      });
     }
 
-    const dateParts = dateTime.split(',')[0].split('/');
-    let formattedDate = dateTime.split(',')[0];
-    if (dateParts.length === 3) {
-      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-      formattedDate = `${months[parseInt(dateParts[1]) - 1]} ${parseInt(dateParts[0])}, ${dateParts[2]}`;
+    // Step 3: Build participants payload
+    const participantsPayload = selectedParticipants.map((participant) => {
+      const paidAmt = resolvedPaid[participant.id] || 0;
+
+      let additionalAmount = 0;
+      if (activeSplitTab === 'individual') {
+        // INDIVIDUAL encoding: additional_amount = individual_bill - perPersonShare
+        const individualBill = parseFloat(individualShares[participant.id]) || 0;
+        additionalAmount = Number((individualBill - perPersonShare).toFixed(2));
+      } else {
+        // SHARING: additional_amount = personal extra on top of share (default 0)
+        additionalAmount = Number((parseFloat(participant.additional_amount) || 0).toFixed(2));
+      }
+
+      return {
+        person_id: participant.id,
+        paid_amount: Number(paidAmt.toFixed(2)),
+        additional_amount: additionalAmount,
+        participant_category: activeSplitTab === 'individual' ? 'INDIVIDUAL' : 'SHARING',
+      };
+    });
+
+    // Step 4: Validate sum(paid_amount) === total_amount
+    const paidTotal = participantsPayload.reduce((sum, p) => sum + p.paid_amount, 0);
+    if (Math.abs(paidTotal - totalBillNum) > 0.01) {
+      return Alert.alert(
+        'Paid Amount Mismatch',
+        `Total paid (Rs ${paidTotal.toFixed(2)}) must equal bill amount (Rs ${totalBillNum.toFixed(2)}).\n\nPlease enter who paid what.`
+      );
     }
 
-    const newScene = {
-      id: Date.now(),
-      title: sceneTitle.trim() || location.trim(),
-      group: selectedGroup.name,
-      description: description.trim() || `Expenses at ${location}`,
-      date: formattedDate,
-      time: dateTime.split(',')[1]?.trim() || '12:00 PM',
-      totalBill: totalBillNum,
-      participants: participantCount,
-      participantAvatars: selectedParticipants.map(p => ({ name: p.avatar, color: p.color })),
+    // Upload image if attached
+    let imageUrl;
+    try {
+      if (attachmentImage?.uri) {
+        const upload = await filesService.uploadFile(token, attachmentImage, 'scene-images');
+        imageUrl = extractFileUrl(upload);
+      }
+    } catch (err) {
+      console.log('Upload failed', err.message);
+      return Alert.alert('Error', 'Failed to upload image.');
+    }
+
+    const payload = {
+      group_id: selectedGroup.id,
       location: location.trim(),
-      yourShare: Math.round(yourShare)
+      description: description.trim(),
+      scene_timestamptz: parseDateTimeToISO(dateTime),
+      total_amount: Number(totalBillNum.toFixed(2)),
+      participants: participantsPayload,
+      ...(imageUrl ? { image_url: imageUrl } : {}),
     };
 
-    Alert.alert('Success', `Scene "${newScene.title}" created successfully!`, [
-      { text: 'OK', onPress: () => navigation.navigate('ScenesList', { newScene }) }
-    ]);
+    try {
+      if (route?.params?.existingScene) {
+        await scenesService.updateScene(token, route.params.existingScene.scene_id || route.params.sceneId, payload);
+      } else {
+        await scenesService.createScene(token, payload);
+      }
+
+      Alert.alert('Success', `Scene saved successfully!`, [ { text: 'OK', onPress: () => navigation.navigate('ScenesList', { shouldRefresh: true }) } ]);
+    } catch (err) {
+      console.log('Scene save error', err.message);
+      Alert.alert('Error', err?.message || 'Failed to save scene');
+    }
   };
+
+  const membersFromGroup = getGroupMemberCount(selectedGroup) || 0;
+  const selectedGroupMemberCount = Math.max(membersFromGroup, Array.isArray(selectedParticipants) ? selectedParticipants.length : 0);
+  const canCreateScene = !!selectedGroup && isGroupAdmin && selectedGroupMemberCount >= 2 && !(activeSplitTab === 'individual' && Math.abs(remainingToAssign) > 0.01);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -292,7 +564,15 @@ const CreateSceneScreen = ({ navigation }) => {
           <Ionicons name="chevron-back" size={26} color="#0f172a" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>New Scene Outing</Text>
-        <View style={{ width: 44 }} />
+        <TouchableOpacity
+          onPress={handleSubmitScene}
+          activeOpacity={0.7}
+          disabled={!canCreateScene}
+          style={[styles.headerActionBtn, !canCreateScene && styles.headerActionBtnDisabled]}
+        >
+          <Ionicons name="cloud-done-outline" size={18} color={canCreateScene ? '#ffffff' : '#94a3b8'} />
+          <Text style={[styles.headerActionText, !canCreateScene && styles.headerActionTextDisabled]}>Save</Text>
+        </TouchableOpacity>
       </View>
 
       <KeyboardAvoidingView
@@ -330,24 +610,32 @@ const CreateSceneScreen = ({ navigation }) => {
               onPress={() => setGroupModalVisible(true)}
               activeOpacity={0.7}
             >
-              <View style={[styles.groupIndicator, { backgroundColor: selectedGroup.color }]} />
+              <View style={[styles.groupIndicator, { backgroundColor: selectedGroup?.color || '#cbd5e1' }]} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.groupTileLabel}>Selected Outing Group</Text>
-                <Text style={styles.groupTileValue}>{selectedGroup.name}</Text>
+                <Text style={styles.groupTileValue}>{selectedGroup?.name || 'Select a group'}</Text>
               </View>
-              <Text style={styles.changeGroupText}>Change</Text>
+              <Text style={styles.changeGroupText}>{selectedGroup ? 'Change' : 'Select'}</Text>
               <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
             </TouchableOpacity>
 
+              {/* Admin restriction notice */}
+              {selectedGroup && !isGroupAdmin && (
+                <View style={styles.adminNoticeRow}>
+                  <Ionicons name="lock-closed" size={16} color="#64748b" style={{ marginRight: 8 }} />
+                  <Text style={styles.adminNoticeText}>Only group admins can create scenes for this group.</Text>
+                </View>
+              )}
+
             {/* 3. Settings-Style Forms Card */}
             <View style={styles.formCard}>
-              {/* Event Title Row */}
+              {/* Scene Name Row */}
               <View style={styles.formRow}>
                 <Ionicons name="bookmark-outline" size={20} color="#64748b" style={styles.rowIcon} />
-                <Text style={styles.rowLabel}>Event Title</Text>
+                <Text style={styles.rowLabel}>Scene Name</Text>
                 <TextInput
                   style={styles.rowInput}
-                  placeholder="e.g. Cafe Outing, Pizza Party"
+                  placeholder="e.g. Cafe Outing"
                   placeholderTextColor="#94a3b8"
                   value={sceneTitle}
                   onChangeText={setSceneTitle}
@@ -381,30 +669,10 @@ const CreateSceneScreen = ({ navigation }) => {
                 activeOpacity={0.7}
               >
                 <Ionicons name="time-outline" size={20} color="#64748b" style={styles.rowIcon} />
-                <Text style={styles.rowLabel}>Date & Time</Text>
+                <Text style={styles.rowLabel}>Select Date & Time</Text>
                 <Text style={styles.rowTextVal}>{dateTime}</Text>
                 <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
               </TouchableOpacity>
-
-              {/* Formula Calculator Row */}
-              <View style={[styles.formRow, { borderBottomWidth: 0 }]}>
-                <Ionicons name="calculator-outline" size={20} color="#64748b" style={styles.rowIcon} />
-                <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
-                  <Text style={styles.rowLabel}>Calculator</Text>
-                  {calculatedResult !== null && (
-                    <View style={styles.inlineCalcBadge}>
-                      <Text style={styles.inlineCalcText}>= Rs {calculatedResult}</Text>
-                    </View>
-                  )}
-                </View>
-                <TextInput
-                  style={styles.rowInput}
-                  placeholder="e.g. 500+250*2"
-                  placeholderTextColor="#94a3b8"
-                  value={calculatorExpr}
-                  onChangeText={setCalculatorExpr}
-                />
-              </View>
             </View>
 
             {/* 4. Notes & Compact Receipt Capture Card */}
@@ -457,27 +725,16 @@ const CreateSceneScreen = ({ navigation }) => {
               <Text style={styles.splitSectionTitle}>Participant Split</Text>
               <Text style={styles.splitSectionSubtitle}>Select participants and assign expenses</Text>
 
-              {/* Segment Pill Switcher Tabs */}
-              <View style={styles.pillTabsContainer}>
-                <TouchableOpacity
-                  style={[styles.pillTab, activeSplitTab === 'sharing' && styles.activePillTab]}
-                  onPress={() => setActiveSplitTab('sharing')}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.pillTabText, activeSplitTab === 'sharing' && styles.activePillTabText]}>
-                    Split Equally ({activeSplitTab === 'sharing' ? participantCount : 0})
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.pillTab, activeSplitTab === 'individual' && styles.activePillTab]}
-                  onPress={() => setActiveSplitTab('individual')}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.pillTabText, activeSplitTab === 'individual' && styles.activePillTabText]}>
-                    Individual Split ({activeSplitTab === 'individual' ? participantCount : 0})
-                  </Text>
-                </TouchableOpacity>
-              </View>
+              <PillSelector
+                mode="segmented"
+                selectedKey={activeSplitTab}
+                onSelect={setActiveSplitTab}
+                containerStyle={styles.pillTabsContainer}
+                items={[
+                  { key: 'sharing', label: `Split Equally (${activeSplitTab === 'sharing' ? participantCount : 0})` },
+                  { key: 'individual', label: `Individual Split (${activeSplitTab === 'individual' ? participantCount : 0})` },
+                ]}
+              />
 
               {/* Dropdown Member Selector */}
               <TouchableOpacity
@@ -499,31 +756,82 @@ const CreateSceneScreen = ({ navigation }) => {
                 <View style={styles.membersSplitCard}>
                   {selectedParticipants.map(member => {
                     const isYou = member.isYou;
+                    const perPersonShare = participantCount > 0 ? Math.round(((activeSplitTab === 'individual' ? (totalBillNum - sumIndividualShares) : totalBillNum) / participantCount) * 100) / 100 : 0;
+                    const indivBill = parseFloat(individualShares[member.id]) || 0;
                     return (
                       <View key={member.id} style={styles.memberListRow}>
-                        <View style={styles.memberAvatarWrapper}>
+                        {/* Top row: avatar + name + share */}
+                        <View style={styles.memberTopRow}>
                           <View style={[styles.memberAvatarCircle, { backgroundColor: member.color }]}>
-                            <Text style={styles.avatarTextLetter}>{member.avatar}</Text>
+                            {member.imageUrl ? (
+                              <Image source={{ uri: member.imageUrl }} style={styles.memberAvatarImage} />
+                            ) : (
+                              <Text style={styles.avatarTextLetter}>{member.avatar}</Text>
+                            )}
                           </View>
-                          <Text style={styles.memberNameText} numberOfLines={1}>
-                            {member.name} {isYou && '(You)'}
-                          </Text>
+                          <View style={styles.memberNameCol}>
+                            <Text style={styles.memberNameText} numberOfLines={1} ellipsizeMode="tail">
+                              {getDisplayFirstName(member.name)} {isYou && '(You)'}
+                            </Text>
+                            <Text style={styles.memberShareLabel}>
+                              Share: Rs {activeSplitTab === 'sharing' ? equalSplitAmount.toLocaleString() : perPersonShare.toLocaleString()}
+                            </Text>
+                          </View>
                         </View>
 
-                        {activeSplitTab === 'sharing' ? (
-                          <Text style={styles.equalSplitText}>Rs {equalSplitAmount.toLocaleString()}</Text>
-                        ) : (
-                          <View style={styles.individualInputWrapper}>
-                            <Text style={styles.indivCurrency}>Rs</Text>
-                            <TextInput
-                              style={styles.indivInputBox}
-                              keyboardType="numeric"
-                              placeholder="0"
-                              value={individualShares[member.id]?.toString() || ''}
-                              onChangeText={(val) => handleIndividualShareChange(member.id, val)}
-                            />
+                        {/* Input fields row */}
+                        <View style={styles.memberInputsRow}>
+                          {/* Paid Amount */}
+                          <View style={styles.memberInputField}>
+                            <Text style={styles.memberInputLabel}>Paid Amount</Text>
+                            <View style={styles.memberInputBox}>
+                              <Text style={styles.memberInputCurrency}>Rs</Text>
+                              <TextInput
+                                style={styles.memberInputText}
+                                keyboardType="numeric"
+                                placeholder="0.00"
+                                placeholderTextColor="#9ca3af"
+                                value={participantPaid[member.id]?.toString() || ''}
+                                onChangeText={(val) => handlePaidChange(member.id, val)}
+                              />
+                            </View>
                           </View>
-                        )}
+
+                          {/* Additional / Individual Bill */}
+                          <View style={styles.memberInputField}>
+                            <Text style={styles.memberInputLabel}>
+                              {activeSplitTab === 'individual' ? 'Personal Bill' : 'Extra Cost'}
+                            </Text>
+                            <View style={styles.memberInputBox}>
+                              <Text style={styles.memberInputCurrency}>Rs</Text>
+                              {activeSplitTab === 'individual' ? (
+                                <TextInput
+                                  style={styles.memberInputText}
+                                  keyboardType="numeric"
+                                  placeholder="0.00"
+                                  placeholderTextColor="#9ca3af"
+                                  value={individualShares[member.id]?.toString() || ''}
+                                  onChangeText={(val) => handleIndividualShareChange(member.id, val)}
+                                />
+                              ) : (
+                                <TextInput
+                                  style={styles.memberInputText}
+                                  keyboardType="numeric"
+                                  placeholder="0.00"
+                                  placeholderTextColor="#9ca3af"
+                                  value={member.additional_amount?.toString() || ''}
+                                  onChangeText={(val) => {
+                                    // Update additional amount for sharing participant
+                                    const updated = selectedParticipants.map(p =>
+                                      p.id === member.id ? { ...p, additional_amount: parseFloat(val) || 0 } : p
+                                    );
+                                    setSelectedParticipants(updated);
+                                  }}
+                                />
+                              )}
+                            </View>
+                          </View>
+                        </View>
                       </View>
                     );
                   })}
@@ -562,20 +870,14 @@ const CreateSceneScreen = ({ navigation }) => {
 
       {/* Fixed Floating Bottom Action Buttons - Mobile Standard */}
       <View style={styles.fixedFooter}>
-        <TouchableOpacity style={styles.cancelBtnFoot} onPress={() => navigation.goBack()} activeOpacity={0.7}>
-          <Text style={styles.cancelBtnTextFoot}>Cancel</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[
-            styles.submitBtnFoot,
-            (activeSplitTab === 'individual' && Math.abs(remainingToAssign) > 0.01) && styles.submitBtnDisabled
-          ]}
-          onPress={handleSubmitScene}
-          disabled={activeSplitTab === 'individual' && Math.abs(remainingToAssign) > 0.01}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.submitBtnTextFoot}>Create Outing</Text>
-        </TouchableOpacity>
+        <ActionFooter
+          cancelLabel="Cancel"
+          confirmLabel="Create Outing"
+          onCancel={() => navigation.goBack()}
+          onConfirm={handleSubmitScene}
+          confirmDisabled={!canCreateScene}
+          confirmStyle={!canCreateScene ? styles.submitBtnDisabled : null}
+        />
       </View>
 
       {/* --- MODAL 1: GROUP SELECT --- */}
@@ -589,20 +891,24 @@ const CreateSceneScreen = ({ navigation }) => {
               </TouchableOpacity>
             </View>
             <ScrollView style={{ padding: 20 }}>
-              {GROUPS_DATA.map(group => (
+              {groupsList.length > 0 ? groupsList.map(group => (
                 <TouchableOpacity
                   key={group.id}
-                  style={[styles.groupOptionRow, selectedGroup.id === group.id && styles.activeGroupOptionRow]}
+                  style={[styles.groupOptionRow, selectedGroup?.id === group.id && styles.activeGroupOptionRow]}
                   onPress={() => { setSelectedGroup(group); setGroupModalVisible(false); }}
                   activeOpacity={0.7}
                 >
-                  <View style={[styles.groupColorIndicator, { backgroundColor: group.color }]} />
-                  <Text style={[styles.groupOptionText, selectedGroup.id === group.id && styles.activeGroupOptionText]}>
+                  <View style={[styles.groupColorIndicator, { backgroundColor: group.color || '#06b6d4' }]} />
+                  <Text style={[styles.groupOptionText, selectedGroup?.id === group.id && styles.activeGroupOptionText]}>
                     {group.name}
                   </Text>
-                  {selectedGroup.id === group.id && <Ionicons name="checkmark" size={20} color="#06b6d4" style={{ marginLeft: 'auto' }} />}
+                  {selectedGroup?.id === group.id && <Ionicons name="checkmark" size={20} color="#06b6d4" style={{ marginLeft: 'auto' }} />}
                 </TouchableOpacity>
-              ))}
+              )) : (
+                <View style={styles.emptyGroupsState}>
+                  <Text style={styles.emptyGroupsText}>No admin groups available.</Text>
+                </View>
+              )}
               <View style={{ height: 40 }} />
             </ScrollView>
           </View>
@@ -750,9 +1056,12 @@ const CreateSceneScreen = ({ navigation }) => {
                 </TouchableOpacity>
               </View>
 
-              <TouchableOpacity style={styles.saveDateButton} onPress={handleSetDateTime} activeOpacity={0.7}>
-                <Text style={styles.saveDateButtonText}>Apply Date & Time</Text>
-              </TouchableOpacity>
+              <ActionFooter
+                cancelLabel="Cancel"
+                confirmLabel="Apply Date & Time"
+                onCancel={() => setDateModalVisible(false)}
+                onConfirm={handleSetDateTime}
+              />
             </View>
             <View style={{ height: 40 }} />
           </View>
@@ -770,21 +1079,50 @@ const CreateSceneScreen = ({ navigation }) => {
               </TouchableOpacity>
             </View>
             <ScrollView style={{ padding: 20 }}>
-              {selectedGroup.members.map(member => {
-                const isSelected = selectedParticipants.some(p => p.id === member.id);
+              {(groupMembers.length > 0 ? groupMembers : (Array.isArray(selectedGroup?.members) ? selectedGroup.members : [])).map(member => {
+                const id = member.person_id || member.id;
+                const name = member.person?.fullname || member.name || member.person?.username || member.display_name || 'Unknown';
+                const avatar = member.avatar || getInitials(name);
+                const color = member.color || '#06b6d4';
+                const isSelected = modalSelectedIds.includes(id);
                 return (
-                  <TouchableOpacity key={member.id} style={styles.memberCheckRow} onPress={() => handleToggleParticipant(member)} activeOpacity={0.7}>
-                    <View style={[styles.memberAvatarCircle, { backgroundColor: member.color, width: 36, height: 36 }]}>
-                      <Text style={styles.avatarTextLetter}>{member.avatar}</Text>
+                  <TouchableOpacity
+                    key={id}
+                    style={styles.memberCheckRow}
+                    onPress={() => {
+                      setModalSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <View style={[styles.memberAvatarCircle, { backgroundColor: color, width: 36, height: 36 }]}> 
+                      <Text style={styles.avatarTextLetter}>{avatar}</Text>
                     </View>
-                    <Text style={styles.memberCheckName}>{member.name} {member.isYou && '(You)'}</Text>
+                    <Text style={styles.memberCheckName}>{name} {String(id) === String(user?.person_id || user?.id) && '(You)'}</Text>
                     <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
                       {isSelected && <Ionicons name="checkmark" size={16} color="#ffffff" />}
                     </View>
                   </TouchableOpacity>
                 );
               })}
-              <TouchableOpacity style={styles.closeMembersBtn} onPress={() => setMemberModalVisible(false)} activeOpacity={0.7}>
+              {groupMembers.length === 0 && selectedParticipants.length === 0 && debugRawGroup && (
+                <View style={{ padding: 12 }}>
+                  <Text style={{ color: '#64748b', marginBottom: 8 }}>Debug: fetched group data (truncated)</Text>
+                  <Text style={{ fontSize: 12, color: '#0f172a' }}>{JSON.stringify(debugRawGroup, null, 2).slice(0, 1000)}</Text>
+                </View>
+              )}
+
+              <TouchableOpacity
+                style={styles.closeMembersBtn}
+                onPress={() => {
+                  // Apply modal selections to confirmed participants
+                  const confirmed = (groupMembers.length > 0 ? groupMembers : (Array.isArray(selectedGroup?.members) ? selectedGroup.members : [])).filter(m => modalSelectedIds.includes(m.person_id || m.id || m.id));
+                  // Normalize confirmed members to expected shape
+                  const normalized = confirmed.map(m => ({ id: m.person_id || m.id, name: m.person?.fullname || m.name || m.person?.username || 'Unknown', avatar: m.avatar || getInitials(m.person?.fullname || m.name || 'U'), color: m.color || '#06b6d4', isYou: String(m.person_id || m.id) === String(user?.person_id || user?.id) }));
+                  setSelectedParticipants(normalized);
+                  setMemberModalVisible(false);
+                }}
+                activeOpacity={0.7}
+              >
                 <Text style={styles.closeMembersBtnText}>Confirm Members</Text>
               </TouchableOpacity>
               <View style={{ height: 40 }} />
@@ -813,6 +1151,28 @@ const styles = StyleSheet.create({
   },
   backBtn: {
     padding: 6,
+  },
+  headerActionBtn: {
+    minWidth: 78,
+    height: 38,
+    borderRadius: 19,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#06b6d4',
+    gap: 6,
+  },
+  headerActionBtnDisabled: {
+    backgroundColor: '#e2e8f0',
+  },
+  headerActionText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#ffffff',
+  },
+  headerActionTextDisabled: {
+    color: '#94a3b8',
   },
   headerTitle: {
     fontSize: 18,
@@ -953,20 +1313,6 @@ const styles = StyleSheet.create({
   inlineActionBtn: {
     padding: 4,
     marginLeft: 6,
-  },
-  inlineCalcBadge: {
-    backgroundColor: '#ecfeff',
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
-    borderRadius: 6,
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    marginLeft: 6,
-  },
-  inlineCalcText: {
-    fontSize: 10,
-    color: '#0891b2',
-    fontWeight: '700',
   },
 
   // 4. Notes & Compact Receipt Capture Card
@@ -1110,48 +1456,100 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#94a3b8',
   },
+  emptyGroupsState: {
+    paddingVertical: 18,
+    alignItems: 'center',
+  },
+  emptyGroupsText: {
+    fontSize: 13,
+    color: '#64748b',
+    fontWeight: '600',
+  },
   membersSplitCard: {
     gap: 8,
   },
   memberListRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#f8fafc',
-    padding: 10,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#f1f5f9',
+    backgroundColor: '#ffffff',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 18,
+    borderWidth: 0,
+    borderColor: 'transparent',
+    marginBottom: 12,
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 1,
+  },
+  memberRightCol: {
+    alignItems: 'flex-end',
+    minWidth: 84,
   },
   memberAvatarWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
-    marginRight: 10,
+    marginRight: 12,
+    minWidth: 0,
+  },
+  memberNameCol: {
+    flex: 1,
+    minWidth: 0,
+    marginLeft: 10,
+    justifyContent: 'center',
+    alignSelf: 'center',
   },
   memberAvatarCircle: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 10,
+    marginRight: 8,
+  },
+  memberAvatarImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 22,
   },
   avatarTextLetter: {
-    fontSize: 11,
-    fontWeight: '700',
+    fontSize: 15,
+    fontWeight: '800',
     color: '#ffffff',
   },
   memberNameText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#334155',
-    flex: 1,
-  },
-  equalSplitText: {
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: '700',
     color: '#0f172a',
+    flex: 1,
+    textAlignVertical: 'center',
+    lineHeight: 18,
+  },
+  smallMetaRow: {
+    marginTop: 2,
+  },
+  smallMetaText: {
+    fontSize: 12,
+    color: '#94a3b8',
+  },
+  equalSplitText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#0f172a',
+    textAlign: 'right',
+  },
+  sharingRightCol: {
+    alignItems: 'flex-end',
+    marginBottom: 4,
+  },
+  shareSubLabel: {
+    fontSize: 10,
+    color: '#94a3b8',
+    fontWeight: '500',
+    marginTop: 2,
   },
   individualInputWrapper: {
     flexDirection: 'row',
@@ -1178,6 +1576,109 @@ const styles = StyleSheet.create({
     height: '100%',
     padding: 0,
     textAlign: 'right',
+  },
+  additionalBadge: {
+    backgroundColor: '#fff7ed',
+    borderWidth: 1,
+    borderColor: '#fde68a',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginLeft: 8,
+  },
+  additionalText: {
+    color: '#b45309',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  paidRow: {
+    marginTop: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+  },
+  paidLabelWrap: {
+    marginRight: 6,
+    justifyContent: 'center',
+  },
+  paidLabel: {
+    fontSize: 11,
+    color: '#94a3b8',
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  // New participant card styles
+  memberTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  memberShareLabel: {
+    fontSize: 12,
+    color: '#64748b',
+    fontWeight: '500',
+    marginTop: 2,
+  },
+  memberInputsRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  memberInputField: {
+    flex: 1,
+  },
+  memberInputLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#64748b',
+    marginBottom: 6,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  memberInputBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8fafc',
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: '#e2e8f0',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  memberInputCurrency: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#06b6d4',
+    marginRight: 4,
+  },
+  memberInputText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#0f172a',
+    paddingVertical: 0,
+  },
+  paidInputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    borderRadius: 8,
+    borderColor: 'transparent',
+    borderWidth: 0,
+    paddingHorizontal: 0,
+    paddingVertical: 0,
+  },
+  paidCurrency: {
+    fontSize: 12,
+    color: '#06b6d4',
+    fontWeight: '700',
+    marginRight: 4,
+  },
+  paidInputBox: {
+    width: 56,
+    paddingVertical: 2,
+    paddingHorizontal: 0,
+    textAlign: 'right',
+    fontWeight: '700',
   },
   statusBanner: {
     flexDirection: 'row',
@@ -1210,6 +1711,24 @@ const styles = StyleSheet.create({
   textOk: { color: '#065f46' },
   textUnder: { color: '#92400e' },
   textOver: { color: '#991b1b' },
+
+  adminNoticeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff7ed',
+    borderWidth: 1,
+    borderColor: '#fde68a',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    marginTop: 12,
+    marginBottom: 12,
+  },
+  adminNoticeText: {
+    fontSize: 12,
+    color: '#92400e',
+    fontWeight: '700',
+  },
 
   // Fixed Floating Footer (iOS standard)
   fixedFooter: {

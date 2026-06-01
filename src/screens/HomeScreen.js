@@ -10,7 +10,7 @@ import { Alert } from 'react-native';
 
 const HomeScreen = () => {
   const navigation = useNavigation();
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const [favoriteGroups, setFavoriteGroups] = useState([]);
   const [loadingFavorites, setLoadingFavorites] = useState(true);
 
@@ -20,7 +20,7 @@ const HomeScreen = () => {
       const fetchFavorites = async () => {
         if (!token) return;
         try {
-          const result = await groupsService.fetchGroups(token);
+          const result = await groupsService.fetchGroups(token, user?.person_id || user?.id || null);
           const starred = result.all.filter(g => g.isFavorite);
           setFavoriteGroups(starred.slice(0, 1));
         } catch (error) {
@@ -30,7 +30,7 @@ const HomeScreen = () => {
         }
       };
       fetchFavorites();
-    }, [token])
+    }, [token, user])
   );
 
   // Recent scenes - 2 latest

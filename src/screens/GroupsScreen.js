@@ -19,7 +19,7 @@ import { COLORS, SPACING, RADIUS, FONT, SHADOW } from '../constants/theme';
 
 const GroupsScreen = ({ route }) => {
   const navigation = useNavigation();
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const [activeTab, setActiveTab] = useState('your');
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -29,14 +29,14 @@ const GroupsScreen = ({ route }) => {
   // Fetch groups from API
   const fetchGroups = useCallback(async () => {
     try {
-      const result = await groupsService.fetchGroups(token);
+      const result = await groupsService.fetchGroups(token, user?.person_id || user?.id || null);
       setGroupsData({ your: result.your, member: result.member });
     } catch (error) {
       console.log('Fetch groups error:', error.message);
     } finally {
       setLoading(false);
     }
-  }, [token]);
+  }, [token, user]);
 
   useEffect(() => {
     fetchGroups();
@@ -115,10 +115,7 @@ const GroupsScreen = ({ route }) => {
             onPress: async () => {
               try {
                 await groupsService.leaveGroup(token, group.id);
-                setGroupsData(prev => ({
-                  your: prev.your.filter(g => g.id !== group.id),
-                  member: prev.member.filter(g => g.id !== group.id),
-                }));
+                await fetchGroups();
                 Alert.alert('Left Group', `You have left "${group.name}".`);
               } catch (error) {
                 Alert.alert('Error', error.message || 'Could not leave group.');
@@ -129,7 +126,7 @@ const GroupsScreen = ({ route }) => {
       )
     };
     actions[action]?.();
-  }, [navigation, token]);
+  }, [navigation, token, fetchGroups]);
 
   const toggleFavorite = useCallback(async (groupId) => {
     const currentGroup = [...groupsData.your, ...groupsData.member].find(g => g.id === groupId);

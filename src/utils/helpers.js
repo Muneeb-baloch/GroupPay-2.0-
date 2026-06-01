@@ -85,6 +85,13 @@ export const formatRelativeTime = (dateString) => {
 };
 
 /**
+ * Create a unique id suitable for optimistic UI records.
+ */
+export const createUniqueId = (prefix = 'id') => {
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+};
+
+/**
  * Get initials from a full name
  * e.g. "Muneeb Ur Rehman" → "MU"
  */
@@ -105,26 +112,60 @@ export const getGroupColor = (index) => {
 /**
  * Normalize a group object from the API response
  */
-export const normalizeGroup = (g, index = 0) => ({
-  id: g.group_id || g.id,
-  name: g.group_name || g.name || 'Unnamed Group',
-  status: g.is_active === false ? 'inactive' : 'active',
-  role: g.role || g.user_role || 'admin',
-  members: g.participants?.length || g.member_count || 1,
-  totalBalance: parseFloat(g.balance || g.total_balance || 0),
-  lastActivity: formatRelativeTime(g.created_at || g.updated_at),
-  memberInitials: (g.participants || []).slice(0, 3).map(p =>
-    getInitials(p.person?.fullname || p.person?.username || 'U')
-  ),
-  color: g.color || getGroupColor(index),
-  isFavorite: g.is_starred || false,
-});
+export const normalizeGroup = (g, index = 0) => {
+  const participants = g?.participants || g?.members || g?.group?.participants || [];
+  const activeStatuses = new Set(['ACTIVE', 'ACCEPTED', 'JOINED']);
+  const activeParticipants = participants.filter((p) => {
+    const status = (p?.status || p?.membership_status || '').toString().toUpperCase();
+    if (!status) return true;
+    return activeStatuses.has(status);
+  });
+
+  const explicitRole = (g?.role || g?.user_role || g?.member_role || g?.my_role || '').toString().toLowerCase();
+  const isAdminFlag = g?.is_admin === true || g?.is_admin === 1 || g?.is_admin === '1' || g?.is_admin === 'true' || g?.is_owner === true;
+  // Keep legacy behavior: if backend does not provide a role, treat as admin.
+  const derivedRole = explicitRole || (isAdminFlag ? 'admin' : 'admin');
+
+  const fallbackMemberCount = activeParticipants.length || participants.length || 1;
+
+  const parseCount = (value) => {
+    if (typeof value === 'number' && Number.isFinite(value) && value >= 0) return value;
+    if (typeof value === 'string' && value.trim() !== '' && !Number.isNaN(Number(value))) return Number(value);
+    return null;
+  };
+
+  const resolvedMemberCount =
+    activeParticipants.length ||
+    participants.length ||
+    (parseCount(g?.participant_count) ??
+      parseCount(g?.members_count) ??
+      parseCount(g?.member_count) ??
+      fallbackMemberCount);
+
+  return {
+    id: g.group_id || g.id,
+    name: g.group_name || g.name || 'Unnamed Group',
+    status: g.is_active === false ? 'inactive' : 'active',
+    role: derivedRole,
+    members: resolvedMemberCount,
+    totalBalance: parseFloat(g.balance || g.total_balance || 0),
+    lastActivity: formatRelativeTime(g.created_at || g.updated_at),
+    memberInitials: activeParticipants.slice(0, 3).map(p =>
+      getInitials(p.person?.fullname || p.person?.username || p.name || 'U')
+    ),
+    color: g.color || getGroupColor(index),
+    isFavorite: g.is_starred || false,
+  };
+};
 
 /**
  * Extract groups array from various API response shapes
  */
 export const extractGroupsFromResponse = (data) => {
   if (Array.isArray(data?.data?.data)) return data.data.data;
+  if (Array.isArray(data?.data?.groups)) return data.data.groups;
+  if (Array.isArray(data?.groups)) return data.groups;
+  if (Array.isArray(data?.data?.items)) return data.data.items;
   if (Array.isArray(data?.data)) return data.data;
   if (Array.isArray(data)) return data;
   return [];

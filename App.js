@@ -9,6 +9,7 @@ import BottomTabNavigator from './src/navigation/BottomTabNavigator';
 import AuthNavigator from './src/navigation/AuthNavigator';
 import SplashScreen from './src/screens/SplashScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
+import NotificationsScreen from './src/screens/NotificationsScreen';
 import { AuthContext } from './src/context/AuthContext';
 import { appStyles } from './src/styles/appStyles';
 
@@ -92,6 +93,7 @@ export default function App() {
                   <>
                     <Stack.Screen name="MainApp" component={BottomTabNavigator} />
                     <Stack.Screen name="Profile" component={ProfileScreen} />
+                    <Stack.Screen name="Notifications" component={NotificationsScreen} />
                   </>
                 ) : (
                   <Stack.Screen name="Auth" component={AuthNavigator} />

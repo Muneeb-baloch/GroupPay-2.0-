@@ -21,13 +21,26 @@ export const API_ENDPOINTS = {
   leaveGroup:          (id) => `${BASE_URL}/api/up/groups/${id}/leave`,
   // Invites
   invitesReceived:     `${BASE_URL}/api/up/invites/received`,
+  invitesSent:         `${BASE_URL}/api/up/invites/sent`,
   sendInvite:          `${BASE_URL}/api/up/invites`,
+  cancelSentInvite:    (id) => `${BASE_URL}/api/up/invites/${id}`,
   updateInviteStatus:  (id) => `${BASE_URL}/api/up/invites/${id}/status`,
+  // Deposits
+  deposits:            `${BASE_URL}/api/up/deposits`,
+  updateDepositStatus: (id) => `${BASE_URL}/api/up/deposits/${id}/status`,
   // Transactions
   transactions:        `${BASE_URL}/api/up/transactions`,
   transactionSummary:  (groupId) => `${BASE_URL}/api/up/transactions/summary/${groupId}`,
+  // Scenes
+  scenes:              `${BASE_URL}/api/up/scenes`,
+  sceneById:           (id) => `${BASE_URL}/api/up/scenes/${id}`,
+  calculateScene:      `${BASE_URL}/api/up/scenes/calculate`,
   // Files
   fileUpload:          `${BASE_URL}/api/up/files/upload`,
+  // Notifications
+  notifications:           `${BASE_URL}/api/up/notifications`,
+  markNotificationRead:    (id) => `${BASE_URL}/api/up/notifications/${id}/read`,
+  markAllNotificationsRead: `${BASE_URL}/api/up/notifications/read-all`,
 };
 
 // Generic API call helper

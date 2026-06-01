@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { 
   View, 
   Text, 
@@ -10,99 +10,25 @@ import {
   RefreshControl,
   Alert,
   Pressable,
-  ScrollView
+  ScrollView,
+  ActivityIndicator
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import { useAuth } from '../context/AuthContext';
+import { depositsService } from '../services/depositsService';
+import PillSelector from '../components/PillSelector';
 
 const DepositsScreen = ({ route }) => {
   const navigation = useNavigation();
   const { groupName = 'Chichory', groupId, groupData } = route?.params || {};
+  const { token, user } = useAuth();
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(false);
   const [selectedTab, setSelectedTab] = useState('history');
+  const [deposits, setDeposits] = useState([]);
 
-  // Sample deposit data with more realistic structure and dummy receipts
-  const [deposits, setDeposits] = useState([
-    {
-      id: 1,
-      type: 'deposit',
-      from: 'Muhammad Yousuf',
-      to: 'Muneeb ur Rehman',
-      amount: 1000.00,
-      date: '2026-04-11T10:30:00Z',
-      status: 'completed',
-      method: 'bank_transfer',
-      note: 'Monthly contribution',
-      category: 'Group Fund',
-      icon: 'card',
-      color: '#10b981',
-      receipt: 'https://images.unsplash.com/photo-1563013544-824ae1b704d3?w=400&h=800&fit=crop'
-    },
-    {
-      id: 2,
-      type: 'withdrawal',
-      from: 'Muneeb ur Rehman',
-      to: 'Group Fund',
-      amount: 600.00,
-      date: '2026-04-08T14:15:00Z',
-      status: 'completed',
-      method: 'cash',
-      note: 'Expense reimbursement',
-      category: 'Reimbursement',
-      icon: 'cash',
-      color: '#f59e0b',
-      receipt: 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=400&h=800&fit=crop'
-    },
-    {
-      id: 3,
-      type: 'request',
-      from: 'Ahmad Hassan',
-      to: 'Group Members',
-      amount: 500.00,
-      date: '2026-04-05T09:20:00Z',
-      status: 'pending',
-      method: 'bank_transfer',
-      note: 'Upcoming trip expenses',
-      category: 'Travel',
-      icon: 'airplane',
-      color: '#8b5cf6',
-      receipt: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=400&h=800&fit=crop'
-    },
-    {
-      id: 4,
-      type: 'deposit',
-      from: 'Sarah Khan',
-      to: 'Group Fund',
-      amount: 750.00,
-      date: '2026-04-03T16:45:00Z',
-      status: 'completed',
-      method: 'digital_wallet',
-      note: 'Event contribution',
-      category: 'Events',
-      icon: 'wallet',
-      color: '#06b6d4',
-      receipt: 'https://images.unsplash.com/photo-1559526324-4b87b5e36e44?w=400&h=800&fit=crop'
-    }
-  ]);
-
-  // Handle new deposit from CreateDepositScreen
-  React.useEffect(() => {
-    if (route.params?.newDeposit) {
-      const newDeposit = {
-        ...route.params.newDeposit,
-        icon: getIconForMethod(route.params.newDeposit.method),
-        color: getColorForType(route.params.newDeposit.type)
-      };
-      
-      setDeposits(prevDeposits => [newDeposit, ...prevDeposits]);
-      
-      // Clear the parameter to avoid re-adding on subsequent renders
-      navigation.setParams({ newDeposit: undefined });
-    }
-  }, [route.params?.newDeposit, navigation]);
-
-  const getIconForMethod = (method) => {
+  const getIconForMethod = useCallback((method) => {
     switch (method) {
       case 'bank_transfer': return 'card';
       case 'cash': return 'cash';
@@ -110,31 +36,86 @@ const DepositsScreen = ({ route }) => {
       case 'check': return 'document';
       default: return 'card';
     }
-  };
+  }, []);
 
-  const getColorForType = (type) => {
+  const getColorForType = useCallback((type) => {
     switch (type) {
       case 'deposit': return '#10b981';
       case 'withdrawal': return '#ef4444';
       case 'request': return '#f59e0b';
       default: return '#06b6d4';
     }
-  };
+  }, []);
 
-  // Balance summary
-  const balanceSummary = {
-    totalDeposits: 2250.00,
-    totalWithdrawals: 600.00,
-    netBalance: 1650.00,
-    pendingRequests: 500.00
-  };
+  const normalizeDeposit = useCallback((item) => {
+    const type = (item?.type || item?.deposit_type || 'request').toLowerCase();
+    const method = (item?.method || item?.deposit_type || 'bank_transfer').toLowerCase();
+    return {
+      id: item?.id ?? item?.deposit_id ?? Date.now(),
+      type,
+      from: item?.from || item?.sender_name || item?.created_by_name || 'You',
+      to: item?.to || item?.receiver_name || 'Group Fund',
+      amount: Number(item?.amount || 0),
+      date: item?.date || item?.created_at || item?.createdAt || new Date().toISOString(),
+      status: (item?.status || 'pending').toLowerCase(),
+      method,
+      note: item?.description || item?.note || 'Deposit request',
+      category: item?.category || 'General',
+      icon: getIconForMethod(method),
+      color: getColorForType(type),
+      receipt: item?.attachment_url || item?.receipt || null,
+    };
+  }, [getColorForType, getIconForMethod]);
+
+  const fetchDeposits = useCallback(async () => {
+    if (!token) return;
+    setLoading(true);
+    try {
+      const data = await depositsService.getDeposits(token, { groupId });
+      const raw = data?.data?.deposits || data?.data || data?.deposits || data?.rows || [];
+      setDeposits(Array.isArray(raw) ? raw.map(normalizeDeposit) : []);
+    } catch (error) {
+      console.log('Fetch deposits error:', error.message);
+      Alert.alert('Error', 'Could not load deposits right now.');
+    } finally {
+      setLoading(false);
+    }
+  }, [groupId, normalizeDeposit, token]);
+
+  // Handle new deposit from CreateDepositScreen
+  useEffect(() => {
+    if (route.params?.newDeposit) {
+      const newDeposit = normalizeDeposit(route.params.newDeposit);
+      
+      setDeposits(prevDeposits => [newDeposit, ...prevDeposits]);
+      
+      // Clear the parameter to avoid re-adding on subsequent renders
+      navigation.setParams({ newDeposit: undefined });
+    }
+  }, [navigation, normalizeDeposit, route.params?.newDeposit]);
+
+  useEffect(() => {
+    fetchDeposits();
+  }, [fetchDeposits]);
+
+  const balanceSummary = deposits.reduce((summary, deposit) => {
+    if (deposit.type === 'deposit') {
+      summary.totalDeposits += deposit.amount;
+    } else if (deposit.type === 'withdrawal') {
+      summary.totalWithdrawals += deposit.amount;
+    } else if (deposit.type === 'request' && deposit.status === 'pending') {
+      summary.pendingRequests += deposit.amount;
+    }
+
+    summary.netBalance = summary.totalDeposits - summary.totalWithdrawals;
+    return summary;
+  }, { totalDeposits: 0, totalWithdrawals: 0, netBalance: 0, pendingRequests: 0 });
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await fetchDeposits();
     setRefreshing(false);
-  }, []);
+  }, [fetchDeposits]);
 
   const formatDate = useCallback((dateString) => {
     const date = new Date(dateString);
@@ -179,6 +160,14 @@ const DepositsScreen = ({ route }) => {
     if (selectedTab === 'pending') return deposit.status === 'pending';
     return true;
   });
+
+  const renderLoadingState = () => (
+    <View style={styles.emptyState}>
+      <ActivityIndicator size="large" color="#06b6d4" />
+      <Text style={styles.emptyTitle}>Loading deposits...</Text>
+      <Text style={styles.emptySubtitle}>Fetching the latest deposit requests and history.</Text>
+    </View>
+  );
 
   const renderBalanceCard = useCallback(() => (
     <View style={styles.balanceCard}>
@@ -259,47 +248,12 @@ const DepositsScreen = ({ route }) => {
     ];
 
     return (
-      <ScrollView 
-        horizontal 
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.filterScrollContainer}
-        style={styles.filterScrollView}
-      >
-        {filterOptions.map((filter) => (
-          <TouchableOpacity
-            key={filter.key}
-            style={[
-              styles.filterChip,
-              selectedTab === filter.key && styles.activeFilterChip
-            ]}
-            onPress={() => setSelectedTab(filter.key)}
-            activeOpacity={0.7}
-          >
-            <Ionicons 
-              name={filter.icon} 
-              size={16} 
-              color={selectedTab === filter.key ? '#ffffff' : '#64748b'} 
-            />
-            <Text style={[
-              styles.filterChipText,
-              selectedTab === filter.key && styles.activeFilterChipText
-            ]}>
-              {filter.label}
-            </Text>
-            <View style={[
-              styles.filterChipBadge,
-              selectedTab === filter.key && styles.activeFilterChipBadge
-            ]}>
-              <Text style={[
-                styles.filterChipBadgeText,
-                selectedTab === filter.key && styles.activeFilterChipBadgeText
-              ]}>
-                {filter.count}
-              </Text>
-            </View>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+      <PillSelector
+        selectedKey={selectedTab}
+        onSelect={setSelectedTab}
+        containerStyle={styles.filterScrollContainer}
+        items={filterOptions}
+      />
     );
   }, [selectedTab, deposits]);
 
@@ -501,7 +455,7 @@ const DepositsScreen = ({ route }) => {
         renderItem={renderDepositItem}
         keyExtractor={keyExtractor}
         ListHeaderComponent={renderListHeader}
-        ListEmptyComponent={renderEmptyState}
+        ListEmptyComponent={loading ? renderLoadingState : renderEmptyState}
         ItemSeparatorComponent={() => <View style={styles.itemSeparator} />}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}

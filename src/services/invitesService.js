@@ -14,11 +14,25 @@ export const invitesService = {
   },
 
   /**
+   * Get sent invites for current user
+   */
+  getSentInvites: (token, { page = 1, pageSize = 50 } = {}) => {
+    const params = new URLSearchParams({ page, pageSize });
+    return apiCall(`${API_ENDPOINTS.invitesSent}?${params.toString()}`, 'GET', null, token);
+  },
+
+  /**
    * Send a group invite
    * Body: { group_id, receiver_id }
    */
   sendInvite: (token, groupId, receiverId) =>
     apiCall(API_ENDPOINTS.sendInvite, 'POST', { group_id: groupId, receiver_id: receiverId }, token),
+
+  /**
+   * Cancel/delete a sent invite (pending only)
+   */
+  cancelSentInvite: (token, inviteId) =>
+    apiCall(API_ENDPOINTS.cancelSentInvite(inviteId), 'DELETE', null, token),
 
   /**
    * Accept or decline an invite

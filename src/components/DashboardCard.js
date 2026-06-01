@@ -41,7 +41,7 @@ const DashboardCard = () => {
     const fetchGroups = async () => {
       if (!token) return;
       try {
-        const result = await groupsService.fetchGroups(token);
+        const result = await groupsService.fetchGroups(token, user?.person_id || user?.id || null);
         const groups = result.all || [];
         const colors = ['#06b6d4', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#3b82f6'];
         const normalized = groups.map((g, i) => ({
@@ -59,7 +59,19 @@ const DashboardCard = () => {
       }
     };
     fetchGroups();
-  }, [token]);
+  }, [token, user]);
+
+  const getGroupMemberCount = (group) => {
+    if (!group) return 0;
+    if (typeof group.members === 'number') return group.members;
+    if (Array.isArray(group.members)) return group.members.length;
+    const candidate = group?.participant_count ?? group?.participants_count ?? group?.member_count ?? group?.members_count ?? group?.memberCount;
+    if (typeof candidate === 'number') return candidate;
+    if (typeof candidate === 'string' && candidate.trim() !== '' && !Number.isNaN(Number(candidate))) return Number(candidate);
+    const participants = group?.participants || group?.group?.participants || group?.members || [];
+    if (Array.isArray(participants)) return participants.length;
+    return 0;
+  };
 
   // Calculate total balance based on selected groups
   useEffect(() => {
@@ -109,8 +121,13 @@ const DashboardCard = () => {
     }
   };
 
-  const handleCreateScene = () => {
+  const handleCreateScene = async () => {
+    // Open CreateScene; enforce permissions inside CreateSceneScreen on submit.
     navigation.navigate('Scenes', { screen: 'CreateScene' });
+  };
+
+  const handleCreateExpense = () => {
+    navigation.navigate('Expenses', { openAddSheet: true });
   };
 
   const toggleGroupSelection = (groupId) => {
@@ -214,10 +231,14 @@ const DashboardCard = () => {
                 <Text style={dashboardStyles.profileName}>{firstName}</Text>
               </View>
             </TouchableOpacity>
-            <TouchableOpacity style={dashboardStyles.notificationButton}>
+            <TouchableOpacity
+              style={dashboardStyles.notificationButton}
+              onPress={() => navigation.navigate('Notifications')}
+              activeOpacity={0.8}
+            >
               <Ionicons name="notifications-outline" size={24} color="#ffffff" />
               <View style={dashboardStyles.notificationBadge}>
-                <Text style={dashboardStyles.badgeText}>1</Text>
+                <Text style={dashboardStyles.badgeText}>!</Text>
               </View>
             </TouchableOpacity>
           </View>
@@ -289,11 +310,15 @@ const DashboardCard = () => {
                 <Text style={dashboardStyles.actionButtonText}>Scenes</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity style={dashboardStyles.actionButton}>
+              <TouchableOpacity
+                style={dashboardStyles.actionButton}
+                onPress={handleCreateExpense}
+                activeOpacity={0.8}
+              >
                 <View style={dashboardStyles.actionButtonCircle}>
-                  <Ionicons name="swap-horizontal" size={24} color="#ffffff" />
+                  <Ionicons name="receipt" size={24} color="#ffffff" />
                 </View>
-                <Text style={dashboardStyles.actionButtonText}>Split Bill</Text>
+                <Text style={dashboardStyles.actionButtonText}>Add Expense</Text>
               </TouchableOpacity>
             </View>
           </View>

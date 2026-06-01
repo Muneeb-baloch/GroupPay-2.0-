@@ -19,6 +19,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { groupsService } from '../services/groupsService';
 import { useAuth } from '../context/AuthContext';
+import { createUniqueId } from '../utils/helpers';
 
 const COLOR_OPTIONS = [
   '#06b6d4', '#10b981', '#f59e0b',
@@ -74,7 +75,7 @@ const CreateGroupScreen = ({ navigation }) => {
       setLoading(false);
 
       const newGroup = data?.data || data?.group || {
-        id: data?.id || Date.now(),
+        id: data?.id || createUniqueId('group'),
         name: groupName.trim(),
         status: 'active',
         role: 'admin',
@@ -101,8 +102,8 @@ const CreateGroupScreen = ({ navigation }) => {
   const isValid = groupName.trim().length > 0;
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+    <SafeAreaView style={styles.container} edges={["bottom"]}>
+      <StatusBar barStyle="dark-content" backgroundColor="#f8fffe" />
 
       {/* Header */}
       <View style={styles.header}>
@@ -122,8 +123,8 @@ const CreateGroupScreen = ({ navigation }) => {
           >
             {/* Avatar Preview */}
             <View style={styles.avatarSection}>
-              <View style={[styles.avatarRing, { borderColor: selectedColor + '50' }]}>
-                <View style={[styles.avatar, { backgroundColor: selectedColor }]}>
+              <View style={[styles.avatarRing, { borderColor: 'rgba(6,182,212,0.18)' }]}>
+                <View style={[styles.avatar, { backgroundColor: '#06b6d4' }]}>
                   {initials ? (
                     <Text style={styles.avatarText}>{initials}</Text>
                   ) : (
@@ -140,11 +141,11 @@ const CreateGroupScreen = ({ navigation }) => {
             {/* Name Input Card */}
             <View style={styles.card}>
               <Text style={styles.cardLabel}>GROUP NAME</Text>
-              <View style={[styles.inputWrapper, focused && { borderColor: selectedColor, backgroundColor: '#ffffff' }]}>
+              <View style={[styles.inputWrapper, focused && { borderColor: '#06b6d4', backgroundColor: '#ffffff' }]}>
                 <Ionicons
                   name="people-outline"
                   size={18}
-                  color={focused ? selectedColor : '#94a3b8'}
+                  color={focused ? '#06b6d4' : '#94a3b8'}
                   style={{ marginRight: 10 }}
                 />
                 <TextInput
@@ -171,44 +172,13 @@ const CreateGroupScreen = ({ navigation }) => {
               </Text>
             </View>
 
-            {/* Color Picker Card */}
-            <View style={styles.card}>
-              <Text style={styles.cardLabel}>GROUP COLOR</Text>
-              <View style={styles.colorGrid}>
-                {COLOR_OPTIONS.map((color) => (
-                  <TouchableOpacity
-                    key={color}
-                    style={[styles.colorDot, { backgroundColor: color }, selectedColor === color && styles.colorDotSelected]}
-                    onPress={() => setSelectedColor(color)}
-                    activeOpacity={0.8}
-                  >
-                    {selectedColor === color && (
-                      <Ionicons name="checkmark" size={14} color="#ffffff" />
-                    )}
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
+            {/* (Color picker removed — using default primary color) */}
 
-            {/* Info Card */}
-            <View style={styles.card}>
-              {[
-                { icon: 'shield-checkmark-outline', text: "You'll be the group admin" },
-                { icon: 'person-add-outline', text: 'Invite members after creation' },
-                { icon: 'lock-closed-outline', text: 'Private group by default' },
-              ].map((item, i, arr) => (
-                <View key={i} style={[styles.infoRow, i < arr.length - 1 && styles.infoRowBorder]}>
-                  <View style={[styles.infoIcon, { backgroundColor: selectedColor + '18' }]}>
-                    <Ionicons name={item.icon} size={16} color={selectedColor} />
-                  </View>
-                  <Text style={styles.infoText}>{item.text}</Text>
-                </View>
-              ))}
-            </View>
+            {/* Info block removed per request */}
 
             {/* Create Button — inside scroll, above nav bar */}
             <TouchableOpacity
-              style={[styles.createButton, { backgroundColor: isValid ? selectedColor : '#cbd5e1' }]}
+              style={[styles.createButton, { backgroundColor: isValid ? '#06b6d4' : '#cbd5e1' }]}
               onPress={handleCreateGroup}
               disabled={!isValid || loading}
               activeOpacity={0.8}
@@ -245,10 +215,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingVertical: 14,
-    backgroundColor: '#ffffff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
+    paddingVertical: 8,
+    backgroundColor: '#f8fffe',
+    borderBottomWidth: 0,
   },
   backButton: {
     width: 36,
@@ -265,13 +234,13 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: 20,
-    paddingTop: 24,
+    paddingTop: 0,
   },
 
   // Avatar
   avatarSection: {
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 16,
   },
   avatarRing: {
     width: 104,
@@ -280,7 +249,7 @@ const styles = StyleSheet.create({
     borderWidth: 3,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 12,
+    marginBottom: 8,
   },
   avatar: {
     width: 86,

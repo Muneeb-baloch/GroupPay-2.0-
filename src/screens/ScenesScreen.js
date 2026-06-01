@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -16,79 +16,129 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import { Swipeable, GestureHandlerRootView } from 'react-native-gesture-handler';
+import { useAuth } from '../context/AuthContext';
+import { scenesService } from '../services/scenesService';
+import { groupsService } from '../services/groupsService';
+import { getInitials } from '../utils/helpers';
 
 const { width } = Dimensions.get('window');
 
 const ScenesScreen = ({ route }) => {
   const navigation = useNavigation();
+  const { token, user } = useAuth();
   const [searchText, setSearchText] = useState('');
   const [selectedFilter, setSelectedFilter] = useState('All');
   const [refreshing, setRefreshing] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [isSearchExpanded, setIsSearchExpanded] = useState(false);
   const searchWidth = React.useRef(new Animated.Value(40)).current;
   const searchOpacity = React.useRef(new Animated.Value(0)).current;
 
-  // Sample scenes data - simplified (all paid)
-  const [scenes, setScenes] = useState([
-    {
-      id: 1,
-      title: 'Tummy Cafe',
-      group: 'Chichory',
-      description: 'Delicious tea scene with friends',
-      date: 'May 11, 2026',
-      time: '08:10 PM',
-      totalBill: 924,
-      participants: 4,
-      participantAvatars: [
-        { name: 'MY', color: '#06b6d4' },
-        { name: 'MU', color: '#8b5cf6' },
-        { name: 'UJ', color: '#f59e0b' },
-        { name: 'HN', color: '#10b981' }
-      ],
-      location: 'Downtown Cafe',
-      yourShare: 231
-    },
-    {
-      id: 2,
-      title: 'Office Lunch',
-      group: 'Chichory',
-      description: 'Samosa and cocoa bottle for the team',
-      date: 'May 7, 2026',
-      time: '06:59 PM',
-      totalBill: 280,
-      participants: 2,
-      participantAvatars: [
-        { name: 'MY', color: '#06b6d4' },
-        { name: 'MU', color: '#8b5cf6' }
-      ],
-      location: 'Office Cafeteria',
-      yourShare: 140
-    },
-    {
-      id: 3,
-      title: 'Team Dinner',
-      group: 'Chichory',
-      description: 'Biryani and samosa celebration',
-      date: 'May 6, 2026',
-      time: '03:23 PM',
-      totalBill: 530,
-      participants: 2,
-      participantAvatars: [
-        { name: 'MY', color: '#06b6d4' },
-        { name: 'MU', color: '#8b5cf6' }
-      ],
-      location: 'Spice Garden',
-      yourShare: 265
-    }
-  ]);
+  const [scenes, setScenes] = useState([]);
+  const [adminGroups, setAdminGroups] = useState([]);
 
-  React.useEffect(() => {
-    if (route?.params?.newScene) {
-      const newScene = route.params.newScene;
-      setScenes(prevScenes => [newScene, ...prevScenes]);
-      navigation.setParams({ newScene: undefined });
+  const toArray = useCallback((value) => {
+    if (Array.isArray(value)) return value;
+    if (!value || typeof value !== 'object') return [];
+    if (Array.isArray(value?.data)) return value.data;
+    if (Array.isArray(value?.rows)) return value.rows;
+    if (Array.isArray(value?.items)) return value.items;
+    if (Array.isArray(value?.scenes)) return value.scenes;
+    if (value?.data && typeof value.data === 'object') return toArray(value.data);
+    return [];
+  }, []);
+
+  const getGroupMemberCount = useCallback((group) => {
+    if (!group) return 0;
+    // If normalized 'members' field exists and is numeric
+    if (typeof group.members === 'number') return group.members;
+    // If members is array
+    if (Array.isArray(group.members)) return group.members.length;
+    // Common alternative fields
+    const candidate = group?.participant_count ?? group?.participants_count ?? group?.member_count ?? group?.members_count ?? group?.memberCount;
+    if (typeof candidate === 'number') return candidate;
+    if (typeof candidate === 'string' && candidate.trim() !== '' && !Number.isNaN(Number(candidate))) return Number(candidate);
+    // Fallback to participants array
+    const participants = group?.participants || group?.group?.participants || group?.members || [];
+    if (Array.isArray(participants)) return participants.length;
+    return 0;
+  }, []);
+
+  const getSceneDate = useCallback((item) => {
+    return item?.scene_timestamptz || item?.scene_timestamp || item?.date || item?.created_at || item?.updated_at || new Date().toISOString();
+  }, []);
+
+  const normalizeScene = useCallback((item, groupsById, currentUserId) => {
+    const sceneId = item?.scene_id || item?.id;
+    const rawDate = getSceneDate(item);
+    const parsedDate = new Date(rawDate);
+    const participants = toArray(item?.participants || item?.scene_participants || item?.members);
+    const avatars = participants.slice(0, 3).map((participant, index) => {
+      const name = participant?.person?.fullname || participant?.person?.username || participant?.name || `P${index + 1}`;
+      return {
+        name: getInitials(name),
+        color: ['#06b6d4', '#8b5cf6', '#f59e0b', '#10b981', '#ef4444'][index % 5],
+      };
+    });
+
+    const me = participants.find((participant) => {
+      const personId = participant?.person_id || participant?.person?.id || participant?.id;
+      return String(personId) === String(currentUserId);
+    });
+
+    const myShareRaw = me?.pending_amount ?? me?.share_amount ?? me?.net_amount ?? 0;
+    const yourShare = Number.isFinite(Number(myShareRaw)) ? Number(myShareRaw).toFixed(2) : '0.00';
+
+    return {
+      id: sceneId,
+      title: item?.title || item?.scene_name || item?.location || `Scene #${sceneId}`,
+      group: groupsById[String(item?.group_id)] || item?.group?.name || 'Group',
+      description: item?.description || `Expenses at ${item?.location || 'Scene location'}`,
+      date: Number.isNaN(parsedDate.getTime()) ? 'Unknown date' : parsedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+      time: Number.isNaN(parsedDate.getTime()) ? '—' : parsedDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+      totalBill: Number(item?.total_amount || item?.totalBill || 0),
+      participants: participants.length,
+      participantAvatars: avatars,
+      location: item?.location || 'Unknown location',
+      yourShare,
+      rawDate,
+      raw: item,
+    };
+  }, [getInitials, getSceneDate, toArray]);
+
+  const fetchScenes = useCallback(async () => {
+    if (!token) return;
+    setLoading(true);
+    try {
+        const groupsData = await groupsService.fetchGroups(token, user?.person_id || user?.id || null);
+        setAdminGroups(groupsData?.your || []);
+      const groupsById = (groupsData?.all || []).reduce((acc, group) => {
+        acc[String(group.id)] = group.name;
+        return acc;
+      }, {});
+
+      const response = await scenesService.getScenes(token, { page: 1, pageSize: 200 });
+      const rawScenes = toArray(response?.data || response);
+      const normalized = rawScenes.map((item) => normalizeScene(item, groupsById, user?.person_id || user?.id || null));
+      setScenes(normalized);
+    } catch (error) {
+      console.log('Fetch scenes error:', error.message);
+      Alert.alert('Error', 'Could not load scenes right now.');
+    } finally {
+      setLoading(false);
     }
-  }, [route?.params?.newScene, navigation]);
+  }, [normalizeScene, toArray, token, user]);
+
+  useEffect(() => {
+    fetchScenes();
+  }, [fetchScenes]);
+
+  useEffect(() => {
+    if (route?.params?.shouldRefresh) {
+      fetchScenes();
+      navigation.setParams({ shouldRefresh: undefined });
+    }
+  }, [fetchScenes, navigation, route?.params?.shouldRefresh]);
 
   const handleSearchPress = () => {
     if (!isSearchExpanded) {
@@ -145,30 +195,24 @@ const ScenesScreen = ({ route }) => {
     });
   };
 
-  const handleRefresh = useCallback(() => {
+  const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    setTimeout(() => {
-      setRefreshing(false);
-    }, 1000);
-  }, []);
+    await fetchScenes();
+    setRefreshing(false);
+  }, [fetchScenes]);
 
   const handleScenePress = (scene) => {
     navigation.navigate('SceneDetail', { scene });
   };
 
-  const handleCreateScene = () => {
+  const handleCreateScene = async () => {
+    // Do not block navigation here — open the CreateScene screen and let
+    // `CreateSceneScreen` enforce admin/member checks on submit.
     navigation.navigate('CreateScene');
   };
 
   const handleEditScene = (scene) => {
-    Alert.alert(
-      'Edit Scene',
-      `Edit "${scene.title}"?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Edit', onPress: () => console.log('Edit scene:', scene.id) }
-      ]
-    );
+    navigation.navigate('CreateScene', { existingScene: scene.raw || scene, sceneId: scene.id });
   };
 
   const handleDeleteScene = (scene) => {
@@ -180,9 +224,15 @@ const ScenesScreen = ({ route }) => {
         {
           text: 'Delete',
           style: 'destructive',
-          onPress: () => {
-            setScenes(prevScenes => prevScenes.filter(s => s.id !== scene.id));
-          }
+          onPress: async () => {
+            if (!token) return;
+            try {
+              await scenesService.deleteScene(token, scene.id);
+              setScenes(prevScenes => prevScenes.filter(s => s.id !== scene.id));
+            } catch (error) {
+              Alert.alert('Error', error?.message || 'Failed to delete scene.');
+            }
+          },
         }
       ]
     );
@@ -213,13 +263,14 @@ const ScenesScreen = ({ route }) => {
   };
 
   const filteredScenes = scenes.filter(scene => {
-    const matchesSearch = scene.title.toLowerCase().includes(searchText.toLowerCase()) ||
+    const matchesSearch =
+      scene.title.toLowerCase().includes(searchText.toLowerCase()) ||
       scene.description.toLowerCase().includes(searchText.toLowerCase()) ||
       scene.location.toLowerCase().includes(searchText.toLowerCase());
 
     if (selectedFilter === 'All') return matchesSearch;
     if (selectedFilter === 'Recent') {
-      const sceneDate = new Date(scene.date);
+      const sceneDate = new Date(scene.rawDate || scene.date);
       const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
       return matchesSearch && sceneDate > weekAgo;
     }
@@ -408,7 +459,7 @@ const ScenesScreen = ({ route }) => {
               </Text>
               <View style={[styles.chipBadge, selectedFilter === 'Recent' && styles.activeChipBadge]}>
                 <Text style={[styles.chipBadgeText, selectedFilter === 'Recent' && styles.activeChipBadgeText]}>
-                  {scenes.filter(s => new Date(s.date) > new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)).length}
+                  {scenes.filter(s => new Date(s.rawDate || s.date) > new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)).length}
                 </Text>
               </View>
             </View>
@@ -462,6 +513,7 @@ const ScenesScreen = ({ route }) => {
         keyExtractor={(item) => item.id.toString()}
         ListHeaderComponent={renderHeader}
         ListEmptyComponent={renderEmptyState}
+        ListFooterComponent={renderFooter}
         contentContainerStyle={styles.listContainer}
         showsVerticalScrollIndicator={false}
         refreshControl={

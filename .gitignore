@@ -40,8 +40,26 @@ yarn-error.*
 .env.development
 .env.production
 .env.staging
+.env.test
+.env.qa
+.env.preview
+.env.*
+.envrc
 .env*.local
 *.env
+!.env.example
+!.env.sample
+!.env.template
+
+# Secret/config files for mobile builds
+*.keystore
+*.pfx
+*.cer
+*.der
+*.p7b
+*.p7c
+google-services.json
+GoogleService-Info.plist
 
 # IDE / Editor
 .vscode/
