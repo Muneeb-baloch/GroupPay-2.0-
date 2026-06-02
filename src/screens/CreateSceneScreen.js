@@ -4,7 +4,6 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  StyleSheet,
   SafeAreaView,
   StatusBar,
   Alert,
@@ -29,6 +28,8 @@ import { groupsService } from '../services/groupsService';
 import { useAuth } from '../context/AuthContext';
 import { scenesService } from '../services/scenesService';
 import { filesService } from '../services/filesService';
+import CreateSceneHeader from '../components/scenes/CreateSceneHeader';
+import createSceneStyles from '../styles/scenes/createSceneStyles';
 
 const { width, height } = Dimensions.get('window');
 
@@ -112,7 +113,7 @@ const CreateSceneScreen = ({ navigation, route }) => {
           avatar: getInitials(m.person?.fullname || m.name || m.person?.username || 'U'),
           imageUrl: m.person?.profile_picture_url || m.person?.avatar_url || m.profile_picture_url || m.avatar_url || m.image_url || m.imageUrl || null,
           color: m.color || '#8b5cf6',
-          isYou: String(m.person_id || m.id) === String(user?.person_id || user?.id)
+          isYou: String(m.person_id || m.id) === String(user?.person_id || user?.id) 
         }));
         if (!mounted) return;
         setGroupMembers(members);
@@ -148,7 +149,7 @@ const CreateSceneScreen = ({ navigation, route }) => {
           avatar: getInitials(p.person?.fullname || p.name || p.person?.username || 'U'),
           imageUrl: p.person?.profile_picture_url || p.person?.avatar_url || p.profile_picture_url || p.avatar_url || p.image_url || p.imageUrl || null,
           color: p.color || '#06b6d4',
-          isYou: String(p.person_id || p.id) === String(user?.person_id || user?.id)
+          isYou: String(p.person_id || p.id) === String(user?.person_id || user?.id )
         }));
         if (!mounted) return;
         setGroupMembers(members);
@@ -467,7 +468,7 @@ const CreateSceneScreen = ({ navigation, route }) => {
 
     // Step 2: Resolve paid amounts
     // If no paid amounts entered, assign full bill to the current user (or first participant)
-    const payer = selectedParticipants.find(p => p.isYou) || selectedParticipants[0];
+    const payer = selectedParticipants.find(p => p.isYou )  || selectedParticipants[0];
     const payerId = payer?.id || payer?.personId;
     const sumPaidInputs = Object.values(participantPaid).reduce((s, v) => s + (parseFloat(v) || 0), 0);
 
@@ -554,26 +555,12 @@ const CreateSceneScreen = ({ navigation, route }) => {
   const selectedGroupMemberCount = Math.max(membersFromGroup, Array.isArray(selectedParticipants) ? selectedParticipants.length : 0);
   const canCreateScene = !!selectedGroup && isGroupAdmin && selectedGroupMemberCount >= 2 && !(activeSplitTab === 'individual' && Math.abs(remainingToAssign) > 0.01);
 
+  const styles = createSceneStyles;
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#f8fffe" />
-
-      {/* Modern Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} activeOpacity={0.7} style={styles.backBtn}>
-          <Ionicons name="chevron-back" size={26} color="#0f172a" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>New Scene Outing</Text>
-        <TouchableOpacity
-          onPress={handleSubmitScene}
-          activeOpacity={0.7}
-          disabled={!canCreateScene}
-          style={[styles.headerActionBtn, !canCreateScene && styles.headerActionBtnDisabled]}
-        >
-          <Ionicons name="cloud-done-outline" size={18} color={canCreateScene ? '#ffffff' : '#94a3b8'} />
-          <Text style={[styles.headerActionText, !canCreateScene && styles.headerActionTextDisabled]}>Save</Text>
-        </TouchableOpacity>
-      </View>
+      <CreateSceneHeader navigation={navigation} title="New Scene Outing" canCreateScene={canCreateScene} onSubmit={handleSubmitScene} />
 
       <KeyboardAvoidingView
         style={{ flex: 1 }}
@@ -756,11 +743,26 @@ const CreateSceneScreen = ({ navigation, route }) => {
                 <View style={styles.membersSplitCard}>
                   {selectedParticipants.map(member => {
                     const isYou = member.isYou;
-                    const perPersonShare = participantCount > 0 ? Math.round(((activeSplitTab === 'individual' ? (totalBillNum - sumIndividualShares) : totalBillNum) / participantCount) * 100) / 100 : 0;
-                    const indivBill = parseFloat(individualShares[member.id]) || 0;
+
+                    // Per README Step 1 & 2:
+                    // shareableAmount = total - sum(individual_bills) - sum(sharing_additionals)
+                    const sharingAdditionalSum = selectedParticipants
+                      .reduce((s, p) => s + (parseFloat(p.additional_amount) || 0), 0);
+                    const shareableAmt = activeSplitTab === 'individual'
+                      ? totalBillNum - sumIndividualShares
+                      : totalBillNum - sharingAdditionalSum;
+                    const perPersonShare = participantCount > 0
+                      ? Math.round((shareableAmt / participantCount) * 100) / 100
+                      : 0;
+
+                    // Displayed share for this participant
+                    const displayShare = activeSplitTab === 'sharing'
+                      ? perPersonShare + (parseFloat(member.additional_amount) || 0)
+                      : perPersonShare;
+
                     return (
                       <View key={member.id} style={styles.memberListRow}>
-                        {/* Top row: avatar + name + share */}
+                        {/* Row 1: Avatar + Name + Share badge */}
                         <View style={styles.memberTopRow}>
                           <View style={[styles.memberAvatarCircle, { backgroundColor: member.color }]}>
                             {member.imageUrl ? (
@@ -770,16 +772,18 @@ const CreateSceneScreen = ({ navigation, route }) => {
                             )}
                           </View>
                           <View style={styles.memberNameCol}>
-                            <Text style={styles.memberNameText} numberOfLines={1} ellipsizeMode="tail">
-                              {getDisplayFirstName(member.name)} {isYou && '(You)'}
+                            <Text style={styles.memberNameText} numberOfLines={1}>
+                              {member.name}{isYou ? ' (You)' : ''}
                             </Text>
-                            <Text style={styles.memberShareLabel}>
-                              Share: Rs {activeSplitTab === 'sharing' ? equalSplitAmount.toLocaleString() : perPersonShare.toLocaleString()}
-                            </Text>
+                            <View style={styles.memberShareBadge}>
+                              <Text style={styles.memberShareLabel}>
+                                Share: Rs {displayShare.toLocaleString()}
+                              </Text>
+                            </View>
                           </View>
                         </View>
 
-                        {/* Input fields row */}
+                        {/* Row 2: Paid Amount + Extra Cost inputs */}
                         <View style={styles.memberInputsRow}>
                           {/* Paid Amount */}
                           <View style={styles.memberInputField}>
@@ -788,7 +792,7 @@ const CreateSceneScreen = ({ navigation, route }) => {
                               <Text style={styles.memberInputCurrency}>Rs</Text>
                               <TextInput
                                 style={styles.memberInputText}
-                                keyboardType="numeric"
+                                keyboardType="decimal-pad"
                                 placeholder="0.00"
                                 placeholderTextColor="#9ca3af"
                                 value={participantPaid[member.id]?.toString() || ''}
@@ -797,7 +801,7 @@ const CreateSceneScreen = ({ navigation, route }) => {
                             </View>
                           </View>
 
-                          {/* Additional / Individual Bill */}
+                          {/* Extra Cost / Personal Bill */}
                           <View style={styles.memberInputField}>
                             <Text style={styles.memberInputLabel}>
                               {activeSplitTab === 'individual' ? 'Personal Bill' : 'Extra Cost'}
@@ -807,7 +811,7 @@ const CreateSceneScreen = ({ navigation, route }) => {
                               {activeSplitTab === 'individual' ? (
                                 <TextInput
                                   style={styles.memberInputText}
-                                  keyboardType="numeric"
+                                  keyboardType="decimal-pad"
                                   placeholder="0.00"
                                   placeholderTextColor="#9ca3af"
                                   value={individualShares[member.id]?.toString() || ''}
@@ -816,14 +820,15 @@ const CreateSceneScreen = ({ navigation, route }) => {
                               ) : (
                                 <TextInput
                                   style={styles.memberInputText}
-                                  keyboardType="numeric"
+                                  keyboardType="decimal-pad"
                                   placeholder="0.00"
                                   placeholderTextColor="#9ca3af"
                                   value={member.additional_amount?.toString() || ''}
                                   onChangeText={(val) => {
-                                    // Update additional amount for sharing participant
                                     const updated = selectedParticipants.map(p =>
-                                      p.id === member.id ? { ...p, additional_amount: parseFloat(val) || 0 } : p
+                                      p.id === member.id
+                                        ? { ...p, additional_amount: parseFloat(val) || 0 }
+                                        : p
                                     );
                                     setSelectedParticipants(updated);
                                   }}
@@ -1097,7 +1102,7 @@ const CreateSceneScreen = ({ navigation, route }) => {
                     <View style={[styles.memberAvatarCircle, { backgroundColor: color, width: 36, height: 36 }]}> 
                       <Text style={styles.avatarTextLetter}>{avatar}</Text>
                     </View>
-                    <Text style={styles.memberCheckName}>{name} {String(id) === String(user?.person_id || user?.id) && '(You)'}</Text>
+                    <Text style={styles.memberCheckName}>{name} {String(id) === String(user?.person_id || user?.id) }</Text>
                     <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
                       {isSelected && <Ionicons name="checkmark" size={16} color="#ffffff" />}
                     </View>
@@ -1134,1062 +1139,6 @@ const CreateSceneScreen = ({ navigation, route }) => {
   );
 };
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f8fffe',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 12,
-    paddingVertical: 14,
-    backgroundColor: '#ffffff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
-  },
-  backBtn: {
-    padding: 6,
-  },
-  headerActionBtn: {
-    minWidth: 78,
-    height: 38,
-    borderRadius: 19,
-    paddingHorizontal: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#06b6d4',
-    gap: 6,
-  },
-  headerActionBtnDisabled: {
-    backgroundColor: '#e2e8f0',
-  },
-  headerActionText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#ffffff',
-  },
-  headerActionTextDisabled: {
-    color: '#94a3b8',
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#0f172a',
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingHorizontal: 20,
-    paddingTop: 16,
-  },
 
-  // 1. Large Amount Header
-  amountHeaderContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 24,
-    backgroundColor: '#ffffff',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#f1f5f9',
-    marginBottom: 16,
-  },
-  amountHeaderLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#64748b',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginBottom: 8,
-  },
-  amountInputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  amountCurrencySymbol: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: '#06b6d4',
-    marginRight: 6,
-    marginTop: 4,
-  },
-  amountTextInput: {
-    fontSize: 34,
-    fontWeight: '800',
-    color: '#0f172a',
-    padding: 0,
-    minWidth: 100,
-    textAlign: 'center',
-  },
-
-  // 2. Active Group Settings Tile
-  groupTile: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#ffffff',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderWidth: 1,
-    borderColor: '#e0f2fe',
-    marginBottom: 16,
-  },
-  groupIndicator: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    marginRight: 12,
-  },
-  groupTileLabel: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#94a3b8',
-    textTransform: 'uppercase',
-  },
-  groupTileValue: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#0f172a',
-    marginTop: 2,
-  },
-  changeGroupText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#06b6d4',
-    marginRight: 4,
-  },
-
-  // 3. Settings List-Style Card panel
-  formCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#f1f5f9',
-    paddingHorizontal: 16,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.01,
-    shadowRadius: 6,
-    elevation: 1,
-  },
-  formRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f8fafc',
-  },
-  rowIcon: {
-    marginRight: 12,
-  },
-  rowLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#475569',
-    width: 90,
-  },
-  rowInput: {
-    flex: 1,
-    fontSize: 14,
-    color: '#0f172a',
-    fontWeight: '600',
-    padding: 0,
-    textAlign: 'right',
-  },
-  rowTextVal: {
-    flex: 1,
-    fontSize: 14,
-    color: '#0f172a',
-    fontWeight: '600',
-    textAlign: 'right',
-    marginRight: 4,
-  },
-  inlineActionBtn: {
-    padding: 4,
-    marginLeft: 6,
-  },
-
-  // 4. Notes & Compact Receipt Capture Card
-  notesLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#475569',
-    marginBottom: 4,
-  },
-  notesTextInput: {
-    fontSize: 14,
-    color: '#0f172a',
-    fontWeight: '500',
-    padding: 0,
-    marginTop: 6,
-    textAlignVertical: 'top',
-    height: 48,
-  },
-  receiptRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#f8fafc',
-  },
-  receiptLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#475569',
-  },
-  receiptAddBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#ecfeff',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    gap: 4,
-  },
-  receiptAddText: {
-    fontSize: 12,
-    color: '#06b6d4',
-    fontWeight: '700',
-  },
-  receiptThumbnailContainer: {
-    position: 'relative',
-  },
-  receiptThumbnail: {
-    width: 44,
-    height: 44,
-    borderRadius: 6,
-    resizeMode: 'cover',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-  },
-  receiptRemoveBadge: {
-    position: 'absolute',
-    top: -4,
-    right: -4,
-    backgroundColor: '#ef4444',
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  // 5. Split Configuration Section
-  splitSection: {
-    backgroundColor: '#ffffff',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#f1f5f9',
-    padding: 16,
-    marginBottom: 20,
-  },
-  splitSectionTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#0f172a',
-  },
-  splitSectionSubtitle: {
-    fontSize: 11,
-    color: '#64748b',
-    fontWeight: '500',
-    marginTop: 2,
-    marginBottom: 16,
-  },
-  pillTabsContainer: {
-    flexDirection: 'row',
-    backgroundColor: '#f1f5f9',
-    borderRadius: 30,
-    padding: 3,
-    marginBottom: 16,
-  },
-  pillTab: {
-    flex: 1,
-    paddingVertical: 8,
-    alignItems: 'center',
-    borderRadius: 20,
-  },
-  activePillTab: {
-    backgroundColor: '#ffffff',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  pillTabText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#64748b',
-  },
-  activePillTabText: {
-    color: '#06b6d4',
-  },
-  memberSelectorRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#f8fafc',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    paddingHorizontal: 12,
-    height: 44,
-    marginBottom: 16,
-  },
-  memberSelectorText: {
-    fontSize: 13,
-    color: '#06b6d4',
-    fontWeight: '700',
-    marginLeft: 8,
-  },
-  emptyPrompt: {
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  emptyPromptText: {
-    fontSize: 12,
-    color: '#94a3b8',
-  },
-  emptyGroupsState: {
-    paddingVertical: 18,
-    alignItems: 'center',
-  },
-  emptyGroupsText: {
-    fontSize: 13,
-    color: '#64748b',
-    fontWeight: '600',
-  },
-  membersSplitCard: {
-    gap: 8,
-  },
-  memberListRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#ffffff',
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    borderRadius: 18,
-    borderWidth: 0,
-    borderColor: 'transparent',
-    marginBottom: 12,
-    shadowColor: '#0f172a',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    elevation: 1,
-  },
-  memberRightCol: {
-    alignItems: 'flex-end',
-    minWidth: 84,
-  },
-  memberAvatarWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-    marginRight: 12,
-    minWidth: 0,
-  },
-  memberNameCol: {
-    flex: 1,
-    minWidth: 0,
-    marginLeft: 10,
-    justifyContent: 'center',
-    alignSelf: 'center',
-  },
-  memberAvatarCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 8,
-  },
-  memberAvatarImage: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 22,
-  },
-  avatarTextLetter: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: '#ffffff',
-  },
-  memberNameText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#0f172a',
-    flex: 1,
-    textAlignVertical: 'center',
-    lineHeight: 18,
-  },
-  smallMetaRow: {
-    marginTop: 2,
-  },
-  smallMetaText: {
-    fontSize: 12,
-    color: '#94a3b8',
-  },
-  equalSplitText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#0f172a',
-    textAlign: 'right',
-  },
-  sharingRightCol: {
-    alignItems: 'flex-end',
-    marginBottom: 4,
-  },
-  shareSubLabel: {
-    fontSize: 10,
-    color: '#94a3b8',
-    fontWeight: '500',
-    marginTop: 2,
-  },
-  individualInputWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#ffffff',
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
-    paddingHorizontal: 6,
-    width: 90,
-    height: 32,
-  },
-  indivCurrency: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#64748b',
-    marginRight: 4,
-  },
-  indivInputBox: {
-    flex: 1,
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#0f172a',
-    height: '100%',
-    padding: 0,
-    textAlign: 'right',
-  },
-  additionalBadge: {
-    backgroundColor: '#fff7ed',
-    borderWidth: 1,
-    borderColor: '#fde68a',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    marginLeft: 8,
-  },
-  additionalText: {
-    color: '#b45309',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  paidRow: {
-    marginTop: 6,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-  },
-  paidLabelWrap: {
-    marginRight: 6,
-    justifyContent: 'center',
-  },
-  paidLabel: {
-    fontSize: 11,
-    color: '#94a3b8',
-    fontWeight: '600',
-    marginBottom: 2,
-  },
-  // New participant card styles
-  memberTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  memberShareLabel: {
-    fontSize: 12,
-    color: '#64748b',
-    fontWeight: '500',
-    marginTop: 2,
-  },
-  memberInputsRow: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  memberInputField: {
-    flex: 1,
-  },
-  memberInputLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#64748b',
-    marginBottom: 6,
-    textTransform: 'uppercase',
-    letterSpacing: 0.3,
-  },
-  memberInputBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#f8fafc',
-    borderRadius: 10,
-    borderWidth: 1.5,
-    borderColor: '#e2e8f0',
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-  memberInputCurrency: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#06b6d4',
-    marginRight: 4,
-  },
-  memberInputText: {
-    flex: 1,
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#0f172a',
-    paddingVertical: 0,
-  },
-  paidInputWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#ffffff',
-    borderRadius: 8,
-    borderColor: 'transparent',
-    borderWidth: 0,
-    paddingHorizontal: 0,
-    paddingVertical: 0,
-  },
-  paidCurrency: {
-    fontSize: 12,
-    color: '#06b6d4',
-    fontWeight: '700',
-    marginRight: 4,
-  },
-  paidInputBox: {
-    width: 56,
-    paddingVertical: 2,
-    paddingHorizontal: 0,
-    textAlign: 'right',
-    fontWeight: '700',
-  },
-  statusBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-    marginTop: 12,
-    gap: 6,
-  },
-  bannerOk: {
-    backgroundColor: '#ecfdf5',
-    borderWidth: 1,
-    borderColor: '#a7f3d0',
-  },
-  bannerUnder: {
-    backgroundColor: '#fffbeb',
-    borderWidth: 1,
-    borderColor: '#fde68a',
-  },
-  bannerOver: {
-    backgroundColor: '#fef2f2',
-    borderWidth: 1,
-    borderColor: '#fecaca',
-  },
-  statusBannerText: {
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  textOk: { color: '#065f46' },
-  textUnder: { color: '#92400e' },
-  textOver: { color: '#991b1b' },
-
-  adminNoticeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fff7ed',
-    borderWidth: 1,
-    borderColor: '#fde68a',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
-    marginTop: 12,
-    marginBottom: 12,
-  },
-  adminNoticeText: {
-    fontSize: 12,
-    color: '#92400e',
-    fontWeight: '700',
-  },
-
-  // Fixed Floating Footer (iOS standard)
-  fixedFooter: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: '#ffffff',
-    borderTopWidth: 1,
-    borderTopColor: '#f1f5f9',
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: Platform.OS === 'ios' ? 24 : 12,
-    flexDirection: 'row',
-    gap: 12,
-  },
-  cancelBtnFoot: {
-    flex: 1,
-    height: 46,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#ffffff',
-  },
-  cancelBtnTextFoot: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#475569',
-  },
-  submitBtnFoot: {
-    flex: 2,
-    height: 46,
-    borderRadius: 10,
-    backgroundColor: '#06b6d4',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#06b6d4',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  submitBtnDisabled: {
-    opacity: 0.5,
-    backgroundColor: '#94a3b8',
-    shadowOpacity: 0,
-  },
-  submitBtnTextFoot: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#ffffff',
-  },
-
-  // Modal bottoms
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.4)',
-    justifyContent: 'flex-end',
-  },
-  bottomSheet: {
-    backgroundColor: '#ffffff',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    maxHeight: '75%',
-    minHeight: '40%',
-  },
-  sheetHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
-  },
-  sheetTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#0f172a',
-  },
-  groupOptionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f8fafc',
-  },
-  activeGroupOptionRow: {
-    backgroundColor: '#f0f9ff',
-    borderRadius: 8,
-    paddingHorizontal: 8,
-  },
-  groupColorIndicator: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    marginRight: 10,
-  },
-  groupOptionText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#334155',
-  },
-  activeGroupOptionText: {
-    color: '#06b6d4',
-    fontWeight: '700',
-  },
-
-  // DateTime selector
-  pickerSection: {
-    padding: 20,
-    alignItems: 'center',
-  },
-  pickerSubLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#64748b',
-    alignSelf: 'flex-start',
-    marginBottom: 6,
-    marginTop: 10,
-  },
-  pickerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 14,
-  },
-  pickerInput: {
-    backgroundColor: '#f1f5f9',
-    borderRadius: 8,
-    width: 44,
-    height: 40,
-    textAlign: 'center',
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#0f172a',
-  },
-  pickerSeparator: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#64748b',
-    marginHorizontal: 6,
-  },
-  periodToggle: {
-    flexDirection: 'row',
-    backgroundColor: '#e2e8f0',
-    borderRadius: 8,
-    padding: 2,
-    marginLeft: 14,
-  },
-  periodBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 6,
-  },
-  periodBtnActive: {
-    backgroundColor: '#ffffff',
-  },
-  periodText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#64748b',
-  },
-  periodTextActive: {
-    color: '#06b6d4',
-  },
-  quickDateRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginBottom: 16,
-  },
-  quickDateBtn: {
-    backgroundColor: '#ecfeff',
-    borderWidth: 1,
-    borderColor: '#a5f3fc',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-  },
-  quickDateText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#0891b2',
-  },
-  saveDateButton: {
-    backgroundColor: '#06b6d4',
-    width: '100%',
-    paddingVertical: 12,
-    borderRadius: 10,
-    alignItems: 'center',
-  },
-  saveDateButtonText: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '700',
-  },
-
-  // Member checklist
-  memberCheckRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
-  },
-  memberCheckName: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#334155',
-    flex: 1,
-  },
-  checkbox: {
-    width: 22,
-    height: 22,
-    borderRadius: 6,
-    borderWidth: 2,
-    borderColor: '#cbd5e1',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  checkboxSelected: {
-    backgroundColor: '#06b6d4',
-    borderColor: '#06b6d4',
-  },
-  closeMembersBtn: {
-    backgroundColor: '#06b6d4',
-    paddingVertical: 12,
-    borderRadius: 10,
-    alignItems: 'center',
-    marginTop: 16,
-  },
-  closeMembersBtnText: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '700',
-  },
-
-  // Map Simulator Modal layout
-  mapSafeArea: {
-    flex: 1,
-    backgroundColor: '#ffffff',
-  },
-  mapSheet: {
-    flex: 1,
-    backgroundColor: '#f8fffe',
-  },
-  mapSheetHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    backgroundColor: '#ffffff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
-  },
-  mapSheetTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#0f172a',
-  },
-  mapSearchContainer: {
-    padding: 12,
-    backgroundColor: '#ffffff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
-    zIndex: 10,
-  },
-  mapSearchInputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#f1f5f9',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    height: 40,
-  },
-  mapSearchInput: {
-    flex: 1,
-    fontSize: 13,
-    color: '#0f172a',
-    fontWeight: '500',
-  },
-  autocompleteList: {
-    backgroundColor: '#ffffff',
-    borderRadius: 10,
-    marginTop: 8,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  autocompleteItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
-  },
-  autocompleteName: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#0f172a',
-  },
-  autocompleteAddress: {
-    fontSize: 11,
-    color: '#64748b',
-    marginTop: 1,
-  },
-  mapVisualContainer: {
-    flex: 1,
-    backgroundColor: '#e2e8f0',
-    position: 'relative',
-    overflow: 'hidden',
-  },
-  roadHorizontal1: {
-    position: 'absolute',
-    top: '30%',
-    left: 0,
-    right: 0,
-    height: 24,
-    backgroundColor: '#ffffff',
-  },
-  roadHorizontal2: {
-    position: 'absolute',
-    bottom: '40%',
-    left: 0,
-    right: 0,
-    height: 32,
-    backgroundColor: '#ffffff',
-  },
-  roadVertical1: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    left: '25%',
-    width: 24,
-    backgroundColor: '#ffffff',
-  },
-  roadVertical2: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    right: '30%',
-    width: 32,
-    backgroundColor: '#ffffff',
-  },
-  parkBlock: {
-    position: 'absolute',
-    top: '5%',
-    right: '5%',
-    width: '40%',
-    height: '20%',
-    backgroundColor: '#dcfce7',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#bbf7d0',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-  },
-  parkText: {
-    fontSize: 10,
-    color: '#166534',
-    fontWeight: '700',
-  },
-  landmark: {
-    position: 'absolute',
-    backgroundColor: '#ffffff',
-    borderRadius: 20,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  landmarkText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#334155',
-  },
-  mapPinContainer: {
-    position: 'absolute',
-    top: '50%',
-    left: '50%',
-    marginLeft: -21,
-    marginTop: -42,
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 5,
-  },
-  mapPinDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#0f172a',
-    marginTop: -6,
-  },
-  myLocationFab: {
-    position: 'absolute',
-    bottom: 180,
-    right: 20,
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#ffffff',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 4,
-    zIndex: 15,
-  },
-  mapFooterCard: {
-    backgroundColor: '#ffffff',
-    padding: 16,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    elevation: 5,
-  },
-  mapFooterInfo: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: 12,
-  },
-  mapFooterName: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#0f172a',
-  },
-  mapFooterAddress: {
-    fontSize: 11,
-    color: '#64748b',
-    marginTop: 2,
-    lineHeight: 14,
-  },
-  mapConfirmButton: {
-    backgroundColor: '#06b6d4',
-    paddingVertical: 12,
-    borderRadius: 10,
-    alignItems: 'center',
-  },
-  mapConfirmText: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '700',
-  },
-});
 
 export default CreateSceneScreen;
