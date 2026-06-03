@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -6,59 +6,94 @@ import {
   ScrollView,
   TouchableOpacity,
   StatusBar,
-  SafeAreaView
+  SafeAreaView,
+  ActivityIndicator,
+  Alert,
+  RefreshControl
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import { useAuth } from '../context/AuthContext';
+import { scenesService } from '../services/scenesService';
 
 const SceneDetailScreen = () => {
   const navigation = useNavigation();
   const route = useRoute();
-  const { scene } = route.params;
+  const { token, user } = useAuth();
+  const { scene: initialScene } = route.params;
 
-  // Simplified mobile-focused data
-  const [participants] = useState([
-    {
-      id: 1,
-      name: 'Muhammad Yousuf',
-      avatar: 'MY',
-      color: '#06b6d4',
-      paid: 500,
-      share: 231,
-      status: 'paid',
-      balance: +269 // owes or gets back
-    },
-    {
-      id: 2,
-      name: 'Muneeb ur Rehman',
-      avatar: 'MU',
-      color: '#8b5cf6',
-      paid: 0,
-      share: 231,
-      status: 'owes',
-      balance: -231
-    },
-    {
-      id: 3,
-      name: 'Ubaid Javaid',
-      avatar: 'UJ',
-      color: '#f59e0b',
-      paid: 0,
-      share: 231,
-      status: 'owes',
-      balance: -231
-    },
-    {
-      id: 4,
-      name: 'Hammad Noon',
-      avatar: 'HN',
-      color: '#10b981',
-      paid: 424,
-      share: 231,
-      status: 'paid',
-      balance: +193
+  const [scene, setScene] = useState(initialScene || {});
+  const [participants, setParticipants] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const fetchSceneDetails = useCallback(async () => {
+    if (!token || !initialScene?.id) return;
+    setLoading(true);
+    try {
+      const response = await scenesService.getSceneById(token, initialScene.id);
+      const fullScene = scenesService.extractScene(response) || response?.data || response;
+      
+      const rawParticipants = fullScene.participants || fullScene.scene_participants || fullScene.members || [];
+      const totalBill = Number(fullScene?.total_amount || fullScene?.totalBill || 0);
+      const sumAdditional = rawParticipants.reduce((sum, p) => sum + Number(p.additional_amount || 0), 0);
+      const participantCount = rawParticipants.length;
+      const perPersonShare = participantCount > 0 ? (totalBill - sumAdditional) / participantCount : 0;
+
+      const normalizedParticipants = rawParticipants.map(p => {
+        const paid = Number(p.paid_amount || 0);
+        const additional = Number(p.additional_amount || 0);
+        const isIndividual = p.participant_category === 'INDIVIDUAL';
+        
+        // Final display cost for the user
+        // INDIVIDUAL: their entire cost is stored in additional_amount (which encodes individual_bill - perShare)
+        // Wait, for display purposes, what is their cost? 
+        // In CreateScene, if INDIVIDUAL, the displayShare = their exact personal bill.
+        // Wait, the API might return `share_amount` if calculated correctly, but to be robust:
+        // Actually, if we use the same math as ScenesScreen: displayShare = perPersonShare + additional
+        const displayShare = perPersonShare + additional; 
+        
+        const balance = paid - displayShare; // Positive: gets back, Negative: owes
+        
+        return {
+          id: String(p.person_id || p.id),
+          name: p.person?.fullname || p.person?.username || p.name || 'Unknown',
+          avatar: p.person?.fullname ? p.person.fullname.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() : 'U',
+          color: ['#06b6d4', '#8b5cf6', '#f59e0b', '#10b981', '#ef4444'][Number(p.person_id || p.id || 0) % 5],
+          paid: paid,
+          share: displayShare,
+          status: balance >= -0.01 ? 'paid' : 'owes',
+          balance: balance
+        };
+      });
+
+      const currentUserId = String(user?.person_id || user?.id);
+      const me = normalizedParticipants.find(p => p.id === currentUserId);
+      const yourShare = me ? me.share.toFixed(2) : '0.00';
+
+      setScene(prev => ({ ...prev, ...fullScene, yourShare }));
+      setParticipants(normalizedParticipants);
+    } catch (error) {
+      console.log('Fetch scene details error:', error.message);
+      Alert.alert('Error', 'Could not load scene details.');
+    } finally {
+      setLoading(false);
     }
-  ]);
+  }, [token, initialScene, user]);
+
+  useEffect(() => {
+    fetchSceneDetails();
+  }, [fetchSceneDetails]);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchSceneDetails();
+    setRefreshing(false);
+  };
+
+  const handleEdit = () => {
+    navigation.navigate('CreateScene', { existingScene: scene, sceneId: scene.id });
+  };
 
   const renderParticipant = (participant) => (
     <View key={participant.id} style={styles.participantCard}>
@@ -69,8 +104,8 @@ const SceneDetailScreen = () => {
         <View style={styles.participantInfo}>
           <Text style={styles.participantName}>{participant.name}</Text>
           <View style={styles.participantDetails}>
-            <Text style={styles.participantShare}>Share: Rs {participant.share}</Text>
-            <Text style={styles.participantPaid}>Paid: Rs {participant.paid}</Text>
+            <Text style={styles.participantShare}>Cost: Rs {participant.share.toLocaleString()}</Text>
+            <Text style={styles.participantPaid}>Paid: Rs {participant.paid.toLocaleString()}</Text>
           </View>
         </View>
       </View>
@@ -78,9 +113,9 @@ const SceneDetailScreen = () => {
       <View style={styles.participantRight}>
         <Text style={[
           styles.balanceAmount,
-          { color: participant.balance >= 0 ? '#10b981' : '#ef4444' }
+          { color: participant.balance >= -0.01 ? '#10b981' : '#ef4444' }
         ]}>
-          {participant.balance >= 0 ? '+' : ''}Rs {participant.balance}
+          {participant.balance > 0.01 ? '+' : ''}Rs {participant.balance.toLocaleString()}
         </Text>
         <View style={[
           styles.statusBadge,
@@ -97,6 +132,17 @@ const SceneDetailScreen = () => {
     </View>
   );
 
+  const displayDate = scene.date || (scene.scene_timestamptz ? new Date(scene.scene_timestamptz).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—');
+  const displayTime = scene.time || (scene.scene_timestamptz ? new Date(scene.scene_timestamptz).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '—');
+
+  if (loading && !refreshing) {
+    return (
+      <View style={[styles.container, styles.centered]}>
+        <ActivityIndicator size="large" color="#06b6d4" />
+      </View>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#f8fffe" />
@@ -112,22 +158,37 @@ const SceneDetailScreen = () => {
         </TouchableOpacity>
         
         <View style={styles.headerContent}>
-          <Text style={styles.title}>{scene.title}</Text>
+          <Text style={styles.title}>{scene.title || scene.scene_name || scene.location || `Scene #${scene.id}`}</Text>
           <Text style={styles.subtitle}>{scene.location}</Text>
         </View>
+
+        <TouchableOpacity 
+          style={styles.editHeaderButton}
+          onPress={handleEdit}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="pencil" size={20} color="#06b6d4" />
+        </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+      <ScrollView 
+        style={styles.content} 
+        showsVerticalScrollIndicator={false} 
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#06b6d4" />
+        }
+      >
         {/* Compact Scene Summary Card - No duplications */}
         <View style={styles.summaryCard}>
           <View style={styles.summaryHeader}>
             <View style={styles.summaryLeft}>
               <Text style={styles.totalLabel}>Total Bill</Text>
-              <Text style={styles.totalAmount}>Rs {scene.totalBill}</Text>
+              <Text style={styles.totalAmount}>Rs {(scene.total_amount || scene.totalBill || 0).toLocaleString()}</Text>
             </View>
             <View style={styles.summaryRight}>
               <Text style={styles.shareLabel}>Your Share</Text>
-              <Text style={styles.shareAmount}>Rs {scene.yourShare}</Text>
+              <Text style={styles.shareAmount}>Rs {scene.yourShare || initialScene?.yourShare || '0.00'}</Text>
             </View>
           </View>
           
@@ -139,7 +200,7 @@ const SceneDetailScreen = () => {
                   <Ionicons name="people" size={14} color="#64748b" />
                   <Text style={styles.fieldLabel}>Group</Text>
                 </View>
-                <Text style={styles.fieldValue}>{scene.group}</Text>
+                <Text style={styles.fieldValue}>{scene.group?.name || scene.group_name || scene.group || 'Group'}</Text>
               </View>
               
               <View style={styles.detailField}>
@@ -147,7 +208,7 @@ const SceneDetailScreen = () => {
                   <Ionicons name="calendar" size={14} color="#64748b" />
                   <Text style={styles.fieldLabel}>Date</Text>
                 </View>
-                <Text style={styles.fieldValue}>{scene.date}</Text>
+                <Text style={styles.fieldValue}>{displayDate}</Text>
               </View>
             </View>
             
@@ -157,7 +218,7 @@ const SceneDetailScreen = () => {
                   <Ionicons name="time" size={14} color="#64748b" />
                   <Text style={styles.fieldLabel}>Time</Text>
                 </View>
-                <Text style={styles.fieldValue}>{scene.time}</Text>
+                <Text style={styles.fieldValue}>{displayTime}</Text>
               </View>
               
               <View style={styles.detailField}>
@@ -165,29 +226,34 @@ const SceneDetailScreen = () => {
                   <Ionicons name="people" size={14} color="#64748b" />
                   <Text style={styles.fieldLabel}>Participants</Text>
                 </View>
-                <Text style={styles.fieldValue}>{scene.participants}</Text>
+                <Text style={styles.fieldValue}>{participants.length}</Text>
               </View>
             </View>
           </View>
 
           {/* Description section - Compact */}
-          <View style={styles.descriptionSection}>
-            <Text style={styles.descriptionTitle}>Description</Text>
-            <Text style={styles.descriptionText}>{scene.description}</Text>
-          </View>
+          {scene.description ? (
+            <View style={styles.descriptionSection}>
+              <Text style={styles.descriptionTitle}>Description</Text>
+              <Text style={styles.descriptionText}>{scene.description}</Text>
+            </View>
+          ) : null}
         </View>
 
         {/* Participants - Now the final section */}
         <View style={styles.participantsSection}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Participants ({participants.length})</Text>
-            <TouchableOpacity style={styles.addButton}>
-              <Ionicons name="person-add" size={16} color="#06b6d4" />
-            </TouchableOpacity>
           </View>
           
           <View style={styles.participantsList}>
-            {participants.map(renderParticipant)}
+            {participants.length > 0 ? (
+              participants.map(renderParticipant)
+            ) : (
+              <View style={styles.emptyParticipants}>
+                <Text style={styles.emptyParticipantsText}>No participants found.</Text>
+              </View>
+            )}
           </View>
         </View>
       </ScrollView>
@@ -199,6 +265,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f8fffe',
+  },
+  centered: {
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   
   // Header - Fixed to match other screens
@@ -229,6 +299,11 @@ const styles = StyleSheet.create({
     color: '#64748b',
     fontWeight: '600',
     marginTop: 4,
+  },
+  editHeaderButton: {
+    padding: 8,
+    backgroundColor: '#ecfeff',
+    borderRadius: 8,
   },
 
   // Content
@@ -357,11 +432,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#0f172a',
   },
-  addButton: {
-    padding: 8,
-    borderRadius: 8,
-    backgroundColor: '#f0f9ff',
-  },
   participantsList: {
     gap: 12,
   },
@@ -436,6 +506,14 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
   },
+  emptyParticipants: {
+    padding: 20,
+    alignItems: 'center',
+  },
+  emptyParticipantsText: {
+    color: '#64748b',
+    fontSize: 14,
+  }
 });
 
 export default SceneDetailScreen;
