@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef, memo } from 'react';
 import {
   View,
   Text,
@@ -23,19 +23,46 @@ import { getInitials } from '../utils/helpers';
 
 const { width } = Dimensions.get('window');
 
+// ─── Skeleton card shown while loading ───────────────────────────────────────
+const SkeletonCard = memo(() => {
+  const pulse = useRef(new Animated.Value(0.4)).current;
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 1, duration: 700, useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 0.4, duration: 700, useNativeDriver: true }),
+      ])
+    ).start();
+  }, [pulse]);
+  return (
+    <Animated.View style={[styles.sceneCard, { opacity: pulse }]}>
+      <View style={styles.skRow}>
+        <View style={[styles.skBlock, { width: '60%', height: 18 }]} />
+        <View style={[styles.skBlock, { width: 60, height: 18 }]} />
+      </View>
+      <View style={[styles.skBlock, { width: '40%', height: 13, marginTop: 8 }]} />
+      <View style={[styles.skBlock, { width: '90%', height: 13, marginTop: 10 }]} />
+      <View style={[styles.skBlock, { width: '70%', height: 13, marginTop: 6 }]} />
+      <View style={[styles.skBlock, { width: '50%', height: 28, marginTop: 14, borderRadius: 8 }]} />
+    </Animated.View>
+  );
+});
+
 const ScenesScreen = ({ route }) => {
   const navigation = useNavigation();
   const { token, user } = useAuth();
   const [searchText, setSearchText] = useState('');
   const [selectedFilter, setSelectedFilter] = useState('All');
   const [refreshing, setRefreshing] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true); // true = show skeletons immediately
   const [isSearchExpanded, setIsSearchExpanded] = useState(false);
   const searchWidth = React.useRef(new Animated.Value(40)).current;
   const searchOpacity = React.useRef(new Animated.Value(0)).current;
 
   const [scenes, setScenes] = useState([]);
   const [adminGroups, setAdminGroups] = useState([]);
+  // groupsById cached as ref — no re-render needed when it updates
+  const groupsByIdRef = useRef({});
 
   const toArray = useCallback((value) => {
     if (Array.isArray(value)) return value;
@@ -97,20 +124,27 @@ const ScenesScreen = ({ route }) => {
   const fetchScenes = useCallback(async () => {
     if (!token) return;
     setLoading(true);
+    const currentUserId = user?.person_id || user?.id || null;
+
     try {
+      // Fire both requests simultaneously
       const [groupsData, response] = await Promise.all([
-        groupsService.fetchGroups(token, user?.person_id || user?.id || null),
-        scenesService.getScenes(token, { page: 1, pageSize: 200 })
+        groupsService.fetchGroups(token, currentUserId).catch(() => null),
+        scenesService.getScenes(token, { page: 1, pageSize: 200 }),
       ]);
-      
-      setAdminGroups(groupsData?.your || []);
-      const groupsById = (groupsData?.all || []).reduce((acc, group) => {
-        acc[String(group.id)] = group.name;
+
+      // Build groupsById lookup
+      const groupsById = ((groupsData?.all || groupsData?.your || []).reduce((acc, g) => {
+        acc[String(g.id)] = g.name;
         return acc;
-      }, {});
+      }, {}));
+      groupsByIdRef.current = groupsById;
+      setAdminGroups(groupsData?.your || []);
 
       const rawScenes = toArray(response?.data || response);
-      const normalized = rawScenes.map((item) => normalizeScene(item, groupsById, user?.person_id || user?.id || null));
+      const normalized = rawScenes.map((item) =>
+        normalizeScene(item, groupsById, currentUserId)
+      );
       setScenes(normalized);
     } catch (error) {
       console.log('Fetch scenes error:', error.message);
@@ -278,11 +312,14 @@ const ScenesScreen = ({ route }) => {
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#f8fffe" />
       <FlatList
-        data={filteredScenes}
-        renderItem={renderSceneCard}
-        keyExtractor={(item) => item.id.toString()}
-        ListHeaderComponent={renderHeader}
-        ListEmptyComponent={() => (
+        data={loading ? [1, 2, 3, 4] : filteredScenes}
+        renderItem={loading
+          ? () => <SkeletonCard />
+          : renderSceneCard
+        }
+        keyExtractor={(item, i) => loading ? `sk-${i}` : item.id.toString()}
+        ListHeaderComponent={loading ? null : renderHeader}
+        ListEmptyComponent={loading ? null : () => (
           <View style={styles.emptyContainer}>
             <LinearGradient colors={['#f0fdfa', '#ecfeff']} style={styles.emptyIconContainer}><Ionicons name="receipt-outline" size={48} color="#06b6d4" /></LinearGradient>
             <Text style={styles.emptyTitle}>{searchText ? 'No matching scenes' : 'No expense scenes yet'}</Text>
@@ -293,7 +330,20 @@ const ScenesScreen = ({ route }) => {
         ListFooterComponent={() => <View style={styles.listFooter} />}
         contentContainerStyle={styles.listContainer}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#06b6d4" colors={['#06b6d4']} progressViewOffset={200} />}
+        // Performance props
+        initialNumToRender={6}
+        maxToRenderPerBatch={8}
+        windowSize={10}
+        removeClippedSubviews={true}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor="#06b6d4"
+            colors={['#06b6d4']}
+            progressViewOffset={200}
+          />
+        }
       />
     </View>
   );
@@ -366,6 +416,9 @@ const styles = StyleSheet.create({
   deleteButton: { backgroundColor: '#ef4444', borderTopRightRadius: 16, borderBottomRightRadius: 16 },
   actionButtonText: { fontSize: 12, fontWeight: '600', color: '#ffffff' },
   listFooter: { height: 200 },
+  // Skeleton
+  skRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  skBlock: { backgroundColor: '#e2e8f0', borderRadius: 6, height: 14 },
 });
 
 export default ScenesScreen;

@@ -189,8 +189,8 @@ const CreateSceneScreen = ({ navigation, route }) => {
 
   const handlePickImage = async () => {
     Alert.alert('Upload Receipt', 'Choose source:', [
-      { text: 'Camera', onPress: async () => { const { status } = await ImagePicker.requestCameraPermissionsAsync(); if (status === 'granted') { const res = await ImagePicker.launchCameraAsync({ allowsEditing: true, quality: 0.8 }); if (!res.canceled) setAttachmentImage(res.assets[0]); } } },
-      { text: 'Gallery', onPress: async () => { const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync(); if (status === 'granted') { const res = await ImagePicker.launchImageLibraryAsync({ allowsEditing: true, quality: 0.8 }); if (!res.canceled) setAttachmentImage(res.assets[0]); } } },
+      { text: 'Camera', onPress: async () => { try { const { status } = await ImagePicker.requestCameraPermissionsAsync(); if (status === 'granted') { const res = await ImagePicker.launchCameraAsync({ allowsEditing: true, quality: 0.8 }); if (!res.canceled) setAttachmentImage(res.assets[0]); } } catch (e) { Alert.alert('Error', e.message || 'Camera not available.'); } } },
+      { text: 'Gallery', onPress: async () => { try { const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync(); if (status === 'granted') { const res = await ImagePicker.launchImageLibraryAsync({ allowsEditing: true, quality: 0.8 }); if (!res.canceled) setAttachmentImage(res.assets[0]); } } catch (e) { Alert.alert('Error', e.message || 'Gallery not available.'); } } },
       { text: 'Cancel', style: 'cancel' }
     ]);
   };
@@ -297,6 +297,9 @@ const CreateSceneScreen = ({ navigation, route }) => {
         }
       }
       if (s.group_id) setSelectedGroup({ id: s.group_id, name: s.group_name || 'Loading...' });
+      // Restore the previously uploaded receipt image so it shows in the thumbnail
+      const existingImageUrl = s.image_url || s.receipt_url || s.attachment_url || null;
+      if (existingImageUrl) setAttachmentImage({ uri: existingImageUrl });
       const rawParts = s.participants || s.scene_participants || [];
       if (rawParts.length > 0) {
         let anyInd = false;

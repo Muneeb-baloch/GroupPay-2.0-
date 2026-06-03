@@ -148,13 +148,22 @@ export const normalizeGroup = (g, index = 0) => {
     status: g.is_active === false ? 'inactive' : 'active',
     role: derivedRole,
     members: resolvedMemberCount,
-    totalBalance: parseFloat(g.balance || g.total_balance || 0),
+    totalBalance: parseFloat(
+      g.balance        ??
+      g.total_balance  ??
+      g.net_balance    ??
+      g.netBalance     ??
+      g.my_balance     ??
+      g.user_balance   ??
+      g.group_balance  ??
+      0
+    ),
     lastActivity: formatRelativeTime(g.created_at || g.updated_at),
     memberInitials: activeParticipants.slice(0, 3).map(p =>
       getInitials(p.person?.fullname || p.person?.username || p.name || 'U')
     ),
     color: g.color || getGroupColor(index),
-    isFavorite: g.is_starred || false,
+    isFavorite: !!(g.is_starred || g.starred || g.is_favorite || g.favorite),
   };
 };
 

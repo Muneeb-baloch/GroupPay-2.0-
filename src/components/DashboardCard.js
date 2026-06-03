@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, Dimensions, Alert, Modal, FlatList, Pressable, Image } from 'react-native';
+import { View, Text, TouchableOpacity, Dimensions, Alert, Modal, FlatList, Pressable, Image, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import { dashboardStyles } from '../styles/dashboardStyles';
 import { useAuth } from '../context/AuthContext';
 import { groupsService } from '../services/groupsService';
+import { transactionsService } from '../services/transactionsService';
 import { formatCurrency } from '../utils/helpers';
 
 const { width } = Dimensions.get('window');
@@ -30,32 +31,76 @@ const DashboardCard = () => {
   const [selectedGroups, setSelectedGroups] = useState(['all']);
   const [totalBalance, setTotalBalance] = useState(0);
   const [balanceVisible, setBalanceVisible] = useState(true);
+  const [balanceLoading, setBalanceLoading] = useState(true);
 
   // Real groups from API
   const [availableGroups, setAvailableGroups] = useState([
     { id: 'all', name: 'All Groups', balance: 0, color: '#06b6d4' },
   ]);
 
-  // Fetch real groups
+  // ── Helper: extract net_balance from any summary response shape ────────────
+  const extractNetBalance = (summaryData) => {
+    if (!summaryData) return null;
+    const s =
+      summaryData?.data?.summary ||
+      summaryData?.data?.data    ||
+      summaryData?.summary       ||
+      summaryData?.data          ||
+      summaryData;
+    const val =
+      s?.net_balance   ??
+      s?.netBalance    ??
+      s?.balance       ??
+      s?.net           ??
+      s?.my_balance    ??
+      s?.user_balance  ??
+      null;
+    return val !== null ? parseFloat(val) : null;
+  };
+
+  // ── Fetch groups then fetch each group's summary in parallel ───────────────
   useEffect(() => {
     const fetchGroups = async () => {
       if (!token) return;
+      setBalanceLoading(true);
       try {
         const result = await groupsService.fetchGroups(token, user?.person_id || user?.id || null);
         const groups = result.all || [];
         const colors = ['#06b6d4', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#3b82f6'];
-        const normalized = groups.map((g, i) => ({
-          id: g.id,
-          name: g.name || 'Unnamed Group',
-          balance: g.totalBalance || 0,
-          color: g.color || colors[i % colors.length],
-        }));
+
+        // Fetch all group summaries in parallel
+        const summaryResults = await Promise.all(
+          groups.map(g =>
+            transactionsService.getGroupSummary(token, g.id).catch(() => null)
+          )
+        );
+
+        const normalized = groups.map((g, i) => {
+          // First try balance from the summary endpoint
+          let balance = extractNetBalance(summaryResults[i]);
+          // Fall back to whatever the groups endpoint returned
+          if (balance === null) {
+            balance = parseFloat(
+              g.totalBalance ?? g.total_balance ?? g.balance ??
+              g.net_balance  ?? g.my_balance   ?? 0
+            );
+          }
+          return {
+            id: g.id,
+            name: g.name || 'Unnamed Group',
+            balance,
+            color: g.color || colors[i % colors.length],
+          };
+        });
+
         const totalAll = normalized.reduce((sum, g) => sum + g.balance, 0);
         const allGroupsEntry = { id: 'all', name: 'All Groups', balance: totalAll, color: '#06b6d4' };
         setAvailableGroups([allGroupsEntry, ...normalized]);
         setTotalBalance(totalAll);
       } catch (error) {
         console.log('DashboardCard fetch groups error:', error.message);
+      } finally {
+        setBalanceLoading(false);
       }
     };
     fetchGroups();
@@ -183,10 +228,14 @@ const DashboardCard = () => {
             </Text>
             <Text style={[
               dashboardStyles.groupFilterBalance,
-              isSelected && dashboardStyles.groupFilterBalanceSelected
+              isSelected && dashboardStyles.groupFilterBalanceSelected,
+              { color: item.id !== 'all'
+                  ? (item.balance >= 0 ? '#10b981' : '#ef4444')
+                  : undefined
+              }
             ]}>
-              {balanceVisible 
-                ? `Rs ${item.balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}` 
+              {balanceVisible
+                ? `${item.balance >= 0 ? '+' : '-'}Rs ${Math.abs(item.balance).toLocaleString('en-US', { minimumFractionDigits: 2 })}`
                 : 'Rs ••••••••'
               }
             </Text>
@@ -268,10 +317,15 @@ const DashboardCard = () => {
                 />
               </TouchableOpacity>
             </View>
-            <Text style={dashboardStyles.balanceAmount}>
-              {balanceVisible 
-                ? `Rs ${totalBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}` 
-                : 'Rs ••••••••'
+            <Text style={[
+              dashboardStyles.balanceAmount,
+              { color: totalBalance >= 0 ? '#ffffff' : '#fca5a5' }
+            ]}>
+              {!balanceVisible
+                ? 'Rs ••••••••'
+                : balanceLoading
+                  ? '---'
+                  : `${totalBalance >= 0 ? '+' : '-'}Rs ${Math.abs(totalBalance).toLocaleString('en-US', { minimumFractionDigits: 2 })}`
               }
             </Text>
             

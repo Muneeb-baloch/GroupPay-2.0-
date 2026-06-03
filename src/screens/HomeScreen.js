@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   ScrollView,
   View,
@@ -6,6 +6,7 @@ import {
   FlatList,
   TouchableOpacity,
   Alert,
+  Animated,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -17,78 +18,134 @@ import RecentExpenseCard from '../components/home/RecentExpenseCard';
 
 import { homeScreenStyles as homeStyles } from '../styles/home/homeScreenStyles';
 import { groupsService } from '../services/groupsService';
+import { scenesService } from '../services/scenesService';
+import { transactionsService } from '../services/transactionsService';
 import { useAuth } from '../context/AuthContext';
+import { getInitials } from '../utils/helpers';
 
-// ─── Static demo data (replace with API when available) ───────────────────────
-const RECENT_SCENES = [
-  {
-    id: 1,
-    title: 'Tummy Cafe',
-    group: 'Chichory',
-    location: 'Downtown Cafe',
-    date: 'May 11, 2026',
-    totalBill: 924,
-    yourShare: 231,
-  },
-  {
-    id: 2,
-    title: 'Office Lunch',
-    group: 'Chichory',
-    location: 'Office Cafeteria',
-    date: 'May 7, 2026',
-    totalBill: 280,
-    yourShare: 140,
-  },
-];
-
-const RECENT_EXPENSES = [
-  {
-    id: 1,
-    title: 'Monthly Salary',
-    type: 'Income',
-    amount: 85000,
-    category: 'Salary',
-    date: '01/05/2026',
-    icon: 'cash-outline',
-    color: '#10b981',
-  },
-  {
-    id: 2,
-    title: 'Tummy Cafe Diner',
-    type: 'Expense',
-    amount: 2450,
-    category: 'Food',
-    date: '21/05/2026',
-    icon: 'fast-food-outline',
-    color: '#f59e0b',
-  },
-];
-// ──────────────────────────────────────────────────────────────────────────────
+// ─── Skeleton row for recent lists ───────────────────────────────────────────
+const SkeletonRow = () => {
+  const pulse = useRef(new Animated.Value(0.4)).current;
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 1, duration: 700, useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 0.4, duration: 700, useNativeDriver: true }),
+      ])
+    ).start();
+  }, [pulse]);
+  return (
+    <Animated.View style={[homeStyles.recentCard, { opacity: pulse, flexDirection: 'row', alignItems: 'center', gap: 12 }]}>
+      <View style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: '#e2e8f0' }} />
+      <View style={{ flex: 1, gap: 8 }}>
+        <View style={{ height: 13, width: '60%', backgroundColor: '#e2e8f0', borderRadius: 6 }} />
+        <View style={{ height: 11, width: '40%', backgroundColor: '#e2e8f0', borderRadius: 6 }} />
+      </View>
+      <View style={{ height: 14, width: 70, backgroundColor: '#e2e8f0', borderRadius: 6 }} />
+    </Animated.View>
+  );
+};
 
 const HomeScreen = () => {
   const navigation = useNavigation();
-  const { token } = useAuth();
+  const { token, user } = useAuth();
 
   const [favoriteGroups, setFavoriteGroups] = useState([]);
   const [loadingFavorites, setLoadingFavorites] = useState(true);
 
-  // ── Fetch favourite groups whenever Home tab is focused ──────────────────
+  const [recentScenes, setRecentScenes] = useState([]);
+  const [loadingScenes, setLoadingScenes] = useState(true);
+
+  const [recentExpenses, setRecentExpenses] = useState([]);
+  const [loadingExpenses, setLoadingExpenses] = useState(true);
+
+  // ── Fetch all home data whenever Home tab is focused ─────────────────────
   useFocusEffect(
     useCallback(() => {
+      if (!token) return;
+      const currentUserId = user?.person_id || user?.id;
+
+      // 1. Favourite groups
       const fetchFavorites = async () => {
-        if (!token) return;
+        setLoadingFavorites(true);
         try {
-          const result = await groupsService.fetchGroups(token);
-          const starred = result.all.filter(g => g.isFavorite);
-          setFavoriteGroups(starred.slice(0, 1));
+          const result = await groupsService.fetchGroups(token, currentUserId);
+          const starred = result.all.filter(
+            g => g.isFavorite || g.is_starred || g.starred
+          );
+          setFavoriteGroups(starred.slice(0, 3));
         } catch (error) {
           console.log('Fetch favorites error:', error.message);
         } finally {
           setLoadingFavorites(false);
         }
       };
-      fetchFavorites();
-    }, [token])
+
+      // 2. Recent scenes (latest 3)
+      const fetchRecentScenes = async () => {
+        setLoadingScenes(true);
+        try {
+          const response = await scenesService.getScenes(token, { page: 1, pageSize: 5 });
+          const raw = scenesService.toArray(response?.data || response);
+          const normalized = raw.slice(0, 3).map(item => {
+            const participants = item?.participants || item?.scene_participants || [];
+            const totalBill = Number(item?.total_amount || 0);
+            const sumAdditional = participants.reduce((s, p) => s + Number(p.additional_amount || 0), 0);
+            const perShare = participants.length > 0 ? (totalBill - sumAdditional) / participants.length : 0;
+            const me = participants.find(p => String(p.person_id || p.person?.id || p.id) === String(currentUserId));
+            const myShare = me ? perShare + Number(me.additional_amount || 0) : 0;
+            const d = new Date(item?.scene_timestamptz || item?.created_at || Date.now());
+            return {
+              id: item?.scene_id || item?.id,
+              title: item?.scene_name || item?.title || item?.location || 'Scene',
+              group: item?.group?.name || 'Group',
+              location: item?.location || '—',
+              date: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+              totalBill,
+              yourShare: myShare.toFixed(2),
+              raw: item,
+            };
+          });
+          setRecentScenes(normalized);
+        } catch (error) {
+          console.log('Fetch recent scenes error:', error.message);
+        } finally {
+          setLoadingScenes(false);
+        }
+      };
+
+      // 3. Recent transactions as "expenses" (latest 3)
+      const fetchRecentExpenses = async () => {
+        setLoadingExpenses(true);
+        try {
+          const data = await transactionsService.getTransactions(token, { pageSize: 5 });
+          const raw = data?.data?.data || data?.data?.transactions || data?.data || data?.transactions || [];
+          const list = Array.isArray(raw) ? raw : [];
+          const normalized = list.slice(0, 3).map((t, i) => {
+            const isCredit = t.type?.toLowerCase() === 'credit';
+            const d = new Date(t.created_at || t.createdAt || Date.now());
+            return {
+              id: t.transaction_id || t.id || i,
+              title: t.person?.fullname || t.scene?.location || t.description || 'Transaction',
+              type: isCredit ? 'Income' : 'Expense',
+              amount: parseFloat(t.amount || 0),
+              category: t.scene?.location || t.description || 'Transaction',
+              date: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+              icon: isCredit ? 'cash-outline' : 'receipt-outline',
+              color: isCredit ? '#10b981' : '#f59e0b',
+            };
+          });
+          setRecentExpenses(normalized);
+        } catch (error) {
+          console.log('Fetch recent expenses error:', error.message);
+        } finally {
+          setLoadingExpenses(false);
+        }
+      };
+
+      // Fire all three in parallel
+      Promise.all([fetchFavorites(), fetchRecentScenes(), fetchRecentExpenses()]);
+    }, [token, user])
   );
 
   // ── Helpers ──────────────────────────────────────────────────────────────
@@ -250,17 +307,36 @@ const HomeScreen = () => {
       {/* ── Recent Scenes ─────────────────────────────────────────────────── */}
       <View style={homeStyles.section}>
         {renderSectionHeader('receipt-outline', '#06b6d4', 'Recent Scenes', () => navigation.navigate('Scenes'))}
-        {RECENT_SCENES.map(scene => (
-          <RecentSceneCard key={scene.id} scene={scene} />
-        ))}
+        {loadingScenes ? (
+          <><SkeletonRow /><SkeletonRow /></>
+        ) : recentScenes.length === 0 ? (
+          <View style={homeStyles.emptyFavorites}>
+            <Text style={homeStyles.emptyFavoritesTitle}>No scenes yet</Text>
+            <Text style={homeStyles.emptyFavoritesSubtitle}>Create your first scene outing to see it here</Text>
+          </View>
+        ) : (
+          recentScenes.map(scene => (
+            <RecentSceneCard key={scene.id} scene={scene}
+              onPress={() => navigation.navigate('Scenes', { screen: 'SceneDetail', params: { scene: scene.raw } })} />
+          ))
+        )}
       </View>
 
       {/* ── Recent Expenses ───────────────────────────────────────────────── */}
       <View style={homeStyles.section}>
-        {renderSectionHeader('wallet-outline', '#8b5cf6', 'Recent Expenses', () => navigation.navigate('Expenses'))}
-        {RECENT_EXPENSES.map(expense => (
-          <RecentExpenseCard key={expense.id} expense={expense} />
-        ))}
+        {renderSectionHeader('wallet-outline', '#8b5cf6', 'Recent Expenses', () => navigation.navigate('Groups'))}
+        {loadingExpenses ? (
+          <><SkeletonRow /><SkeletonRow /></>
+        ) : recentExpenses.length === 0 ? (
+          <View style={homeStyles.emptyFavorites}>
+            <Text style={homeStyles.emptyFavoritesTitle}>No transactions yet</Text>
+            <Text style={homeStyles.emptyFavoritesSubtitle}>Your recent transactions will appear here</Text>
+          </View>
+        ) : (
+          recentExpenses.map(expense => (
+            <RecentExpenseCard key={expense.id} expense={expense} />
+          ))
+        )}
 
         <TouchableOpacity
           style={homeStyles.splitBillButton}

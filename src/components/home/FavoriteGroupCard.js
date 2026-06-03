@@ -38,7 +38,7 @@ const FavoriteGroupCard = ({ item, onPress, onToggleFavorite, onAction, formatBa
     {/* Balance */}
     <View style={homeStyles.balanceSection}>
       <View style={homeStyles.balanceInfo}>
-        <Text style={homeStyles.balanceLabel}>Balance</Text>
+        <Text style={homeStyles.balanceLabel}>Balance Overview</Text>
         <Text style={[homeStyles.balanceAmount, { color: item.totalBalance >= 0 ? '#10b981' : '#ef4444' }]}>
           {formatBalance(item.totalBalance)}
         </Text>
