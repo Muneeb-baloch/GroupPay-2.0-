@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -15,11 +15,14 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
-import { authStyles } from '../styles/authStyles';
+import { getAuthStyles } from '../styles/authStyles';
+import { useTheme } from '../context/ThemeContext';
 import { authService } from '../services/authService';
 
 const SignupScreen = () => {
   const navigation = useNavigation();
+  const { colors, isDark } = useTheme();
+  const authStyles = useMemo(() => getAuthStyles(colors), [colors]);
   const [formData, setFormData] = useState({
     fullName: '',
     email: '',
@@ -164,7 +167,7 @@ const SignupScreen = () => {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <LinearGradient
-        colors={['#f8fffe', '#ecfeff', '#cffafe']}
+        colors={isDark ? [colors.background, colors.surface, colors.background] : ['#f8fffe', '#ecfeff', '#cffafe']}
         style={authStyles.gradient}
       >
         <ScrollView 

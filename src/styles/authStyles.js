@@ -2,10 +2,10 @@ import { StyleSheet, Dimensions } from 'react-native';
 
 const { width, height } = Dimensions.get('window');
 
-export const authStyles = StyleSheet.create({
+export const getAuthStyles = (colors) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8fffe',
+    backgroundColor: colors.background,
   },
   gradient: {
     flex: 1,
@@ -29,7 +29,7 @@ export const authStyles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
@@ -45,7 +45,7 @@ export const authStyles = StyleSheet.create({
     width: 85,
     height: 85,
     borderRadius: 42.5,
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#06b6d4',
@@ -54,7 +54,7 @@ export const authStyles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 6,
     borderWidth: 2,
-    borderColor: '#f0fdfa',
+    borderColor: colors.primaryLight,
   },
   logoImage: {
     width: 55,
@@ -75,14 +75,14 @@ export const authStyles = StyleSheet.create({
   welcomeTitle: {
     fontSize: 24,
     fontWeight: '800',
-    color: '#0f172a',
+    color: colors.text,
     marginBottom: 6,
     textAlign: 'center',
     letterSpacing: -0.5,
   },
   welcomeSubtitle: {
     fontSize: 14,
-    color: '#64748b',
+    color: colors.textSecondary,
     textAlign: 'center',
     lineHeight: 20,
     paddingHorizontal: 12,
@@ -100,25 +100,25 @@ export const authStyles = StyleSheet.create({
   inputLabel: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#374151',
+    color: colors.text,
     marginBottom: 8,
     marginLeft: 2,
   },
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.inputBg,
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 13,
     borderWidth: 1,
-    borderColor: '#e2e8f0',
+    borderColor: colors.inputBorder,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 4,
     elevation: 2,
-    height: 48, // Fixed height for consistency
+    height: 48,
   },
   inputIcon: {
     marginRight: 10,
@@ -127,10 +127,10 @@ export const authStyles = StyleSheet.create({
   textInput: {
     flex: 1,
     fontSize: 15,
-    color: '#1f2937',
+    color: colors.inputText,
     fontWeight: '500',
     paddingVertical: 0,
-    height: 20, // Fixed text height
+    height: 20,
   },
   eyeButton: {
     padding: 4,
@@ -149,7 +149,7 @@ export const authStyles = StyleSheet.create({
   },
   forgotPasswordText: {
     fontSize: 14,
-    color: '#06b6d4',
+    color: colors.primary,
     fontWeight: '600',
   },
 
@@ -165,25 +165,25 @@ export const authStyles = StyleSheet.create({
     height: 20,
     borderRadius: 4,
     borderWidth: 2,
-    borderColor: '#d1d5db',
+    borderColor: colors.skeleton,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
     marginTop: 2,
   },
   checkboxChecked: {
-    backgroundColor: '#06b6d4',
-    borderColor: '#06b6d4',
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   termsText: {
     fontSize: 14,
-    color: '#6b7280',
+    color: colors.textSecondary,
     lineHeight: 20,
     flex: 1,
     fontWeight: '500',
   },
   termsLink: {
-    color: '#06b6d4',
+    color: colors.primary,
     fontWeight: '600',
   },
 
@@ -191,7 +191,7 @@ export const authStyles = StyleSheet.create({
   loginButton: {
     borderRadius: 12,
     marginBottom: 20,
-    shadowColor: '#06b6d4',
+    shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.25,
     shadowRadius: 6,
@@ -237,18 +237,18 @@ export const authStyles = StyleSheet.create({
   dividerLine: {
     flex: 1,
     height: 1,
-    backgroundColor: '#e5e7eb',
+    backgroundColor: colors.divider,
   },
   dividerText: {
     fontSize: 14,
-    color: '#9ca3af',
+    color: colors.textMuted,
     marginHorizontal: 20,
     fontWeight: '500',
-    backgroundColor: '#f8fffe',
+    backgroundColor: colors.background,
     paddingHorizontal: 8,
   },
 
-  // Social Buttons - Enhanced
+  // Social Buttons
   socialContainer: {
     gap: 12,
     marginBottom: 22,
@@ -257,12 +257,12 @@ export const authStyles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.surface,
     paddingVertical: 14,
     paddingHorizontal: 18,
     borderRadius: 12,
     borderWidth: 1.5,
-    borderColor: '#e5e7eb',
+    borderColor: colors.cardBorderMedium,
     gap: 10,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -272,12 +272,12 @@ export const authStyles = StyleSheet.create({
     minHeight: 48,
   },
   socialButtonGoogle: {
-    borderColor: '#dadce0',
-    backgroundColor: '#ffffff',
+    borderColor: colors.cardBorderMedium,
+    backgroundColor: colors.surface,
   },
   socialButtonApple: {
-    borderColor: '#000000',
-    backgroundColor: '#ffffff',
+    borderColor: colors.isDark ? colors.cardBorderMedium : '#000000',
+    backgroundColor: colors.surface,
   },
   socialButtonIcon: {
     width: 20,
@@ -299,13 +299,13 @@ export const authStyles = StyleSheet.create({
   socialButtonText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#374151',
+    color: colors.text,
   },
   socialButtonTextGoogle: {
-    color: '#374151',
+    color: colors.text,
   },
   socialButtonTextApple: {
-    color: '#000000',
+    color: colors.text,
   },
 
   // Footer
@@ -317,16 +317,16 @@ export const authStyles = StyleSheet.create({
   },
   footerText: {
     fontSize: 14,
-    color: '#6b7280',
+    color: colors.textSecondary,
     fontWeight: '500',
   },
   footerLink: {
     fontSize: 14,
-    color: '#06b6d4',
+    color: colors.primary,
     fontWeight: '700',
   },
 
-  // Help Container (for ForgotPassword screen)
+  // Help Container
   helpContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -334,19 +334,19 @@ export const authStyles = StyleSheet.create({
     marginTop: 20,
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: '#f8fafc',
+    backgroundColor: colors.surfaceAlt,
     borderRadius: 12,
     gap: 8,
   },
   helpText: {
     fontSize: 14,
-    color: '#64748b',
+    color: colors.textSecondary,
     fontWeight: '500',
     textAlign: 'center',
     flex: 1,
   },
   helpLink: {
-    color: '#06b6d4',
+    color: colors.primary,
     fontWeight: '600',
   },
 });

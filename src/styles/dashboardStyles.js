@@ -1,8 +1,8 @@
 import { StyleSheet, Dimensions } from 'react-native';
 
-const { width, height } = Dimensions.get('window');
+const { height } = Dimensions.get('window');
 
-export const dashboardStyles = StyleSheet.create({
+export const getDashboardStyles = (colors) => StyleSheet.create({
   unifiedCard: {
     marginHorizontal: 12,
     marginTop: 0,
@@ -161,7 +161,7 @@ export const dashboardStyles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modalContainer: {
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     maxHeight: height * 0.7,
@@ -174,17 +174,17 @@ export const dashboardStyles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingBottom: 20,
     borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
+    borderBottomColor: colors.cardBorder,
   },
   modalTitle: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#0f172a',
+    color: colors.text,
   },
   modalCloseButton: {
     padding: 4,
     borderRadius: 20,
-    backgroundColor: '#f8fafc',
+    backgroundColor: colors.surfaceAlt,
   },
   groupsList: {
     paddingHorizontal: 24,
@@ -198,13 +198,13 @@ export const dashboardStyles = StyleSheet.create({
     paddingHorizontal: 16,
     marginBottom: 8,
     borderRadius: 12,
-    backgroundColor: '#f8fafc',
+    backgroundColor: colors.surfaceAlt,
     borderWidth: 2,
     borderColor: 'transparent',
   },
   groupFilterItemSelected: {
-    backgroundColor: '#f0f9ff',
-    borderColor: '#06b6d4',
+    backgroundColor: colors.primaryLight,
+    borderColor: colors.primary,
   },
   groupFilterInfo: {
     flexDirection: 'row',
@@ -223,32 +223,32 @@ export const dashboardStyles = StyleSheet.create({
   groupFilterName: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#0f172a',
+    color: colors.text,
     marginBottom: 2,
   },
   groupFilterNameSelected: {
-    color: '#06b6d4',
+    color: colors.primary,
   },
   groupFilterBalance: {
     fontSize: 14,
-    color: '#64748b',
+    color: colors.textSecondary,
     fontWeight: '500',
   },
   groupFilterBalanceSelected: {
-    color: '#0891b2',
+    color: colors.primary,
   },
   modalFooter: {
     paddingHorizontal: 24,
     paddingVertical: 20,
     borderTopWidth: 1,
-    borderTopColor: '#f1f5f9',
+    borderTopColor: colors.cardBorder,
   },
   applyButton: {
-    backgroundColor: '#06b6d4',
+    backgroundColor: colors.primary,
     paddingVertical: 16,
     borderRadius: 12,
     alignItems: 'center',
-    shadowColor: '#06b6d4',
+    shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
     shadowRadius: 8,

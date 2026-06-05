@@ -113,20 +113,24 @@ export const getGroupColor = (index) => {
  * Normalize a group object from the API response
  */
 export const normalizeGroup = (g, index = 0) => {
-  const participants = g?.participants || g?.members || g?.group?.participants || [];
-  const activeStatuses = new Set(['ACTIVE', 'ACCEPTED', 'JOINED']);
+  const participants =
+    g?.participants ||
+    g?.group?.participants ||
+    g?.group?.members ||
+    (Array.isArray(g?.members) ? g.members : []);
+
+  // Exclude only explicitly inactive/removed statuses.
+  // Any other status (ACTIVE, ACCEPTED, JOINED, OWNER, ADMIN, PENDING, null, '') = member.
+  const inactiveStatuses = new Set(['INACTIVE', 'REMOVED', 'LEFT', 'DECLINED', 'BANNED', 'DELETED', 'REJECTED']);
   const activeParticipants = participants.filter((p) => {
-    const status = (p?.status || p?.membership_status || '').toString().toUpperCase();
-    if (!status) return true;
-    return activeStatuses.has(status);
+    const status = (p?.status || p?.membership_status || '').toString().toUpperCase().trim();
+    if (!status) return true; // no status = include
+    return !inactiveStatuses.has(status);
   });
 
   const explicitRole = (g?.role || g?.user_role || g?.member_role || g?.my_role || '').toString().toLowerCase();
   const isAdminFlag = g?.is_admin === true || g?.is_admin === 1 || g?.is_admin === '1' || g?.is_admin === 'true' || g?.is_owner === true;
-  // Keep legacy behavior: if backend does not provide a role, treat as admin.
-  const derivedRole = explicitRole || (isAdminFlag ? 'admin' : 'admin');
-
-  const fallbackMemberCount = activeParticipants.length || participants.length || 1;
+  const derivedRole = explicitRole || (isAdminFlag ? 'admin' : 'member');
 
   const parseCount = (value) => {
     if (typeof value === 'number' && Number.isFinite(value) && value >= 0) return value;
@@ -134,13 +138,33 @@ export const normalizeGroup = (g, index = 0) => {
     return null;
   };
 
+  const backendCount =
+    parseCount(g?.participant_count) ??
+    parseCount(g?.participants_count) ??
+    parseCount(g?.members_count) ??
+    parseCount(g?.member_count) ??
+    parseCount(g?.total_members) ??
+    parseCount(g?.group?.participant_count) ??
+    parseCount(g?.group?.participants_count) ??
+    parseCount(g?.group?.members_count) ??
+    parseCount(typeof g?.members === 'number' ? g.members : null) ??
+    0;
+
+  // Prefer the larger of the backend-reported count and the actual participant array.
+  // Backend count is authoritative when the list endpoint returns a summary count
+  // rather than the full participants array. Never go below 1 (owner always exists).
+  const arrayCount = activeParticipants.length > 0
+    ? activeParticipants.length
+    : participants.length;
+
   const resolvedMemberCount =
-    activeParticipants.length ||
-    participants.length ||
-    (parseCount(g?.participant_count) ??
-      parseCount(g?.members_count) ??
-      parseCount(g?.member_count) ??
-      fallbackMemberCount);
+    backendCount > arrayCount
+      ? backendCount
+      : arrayCount > 0
+        ? arrayCount
+        : backendCount > 0
+          ? backendCount
+          : 1;
 
   return {
     id: g.group_id || g.id,

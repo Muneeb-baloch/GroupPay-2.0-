@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import {
   ScrollView,
   View,
@@ -16,15 +16,18 @@ import FavoriteGroupCard from '../components/home/FavoriteGroupCard';
 import RecentSceneCard from '../components/home/RecentSceneCard';
 import RecentExpenseCard from '../components/home/RecentExpenseCard';
 
-import { homeScreenStyles as homeStyles } from '../styles/home/homeScreenStyles';
+import { getHomeScreenStyles } from '../styles/home/homeScreenStyles';
+import { useTheme } from '../context/ThemeContext';
 import { groupsService } from '../services/groupsService';
 import { scenesService } from '../services/scenesService';
 import { transactionsService } from '../services/transactionsService';
 import { useAuth } from '../context/AuthContext';
 import { getInitials } from '../utils/helpers';
+import { cache } from '../utils/cache';
 
 // ─── Skeleton row for recent lists ───────────────────────────────────────────
 const SkeletonRow = () => {
+  const { colors } = useTheme();
   const pulse = useRef(new Animated.Value(0.4)).current;
   useEffect(() => {
     Animated.loop(
@@ -35,13 +38,13 @@ const SkeletonRow = () => {
     ).start();
   }, [pulse]);
   return (
-    <Animated.View style={[homeStyles.recentCard, { opacity: pulse, flexDirection: 'row', alignItems: 'center', gap: 12 }]}>
-      <View style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: '#e2e8f0' }} />
+    <Animated.View style={[{ backgroundColor: colors.card, borderRadius: 12, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: colors.cardBorder }, { opacity: pulse, flexDirection: 'row', alignItems: 'center', gap: 12 }]}>
+      <View style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: colors.skeleton }} />
       <View style={{ flex: 1, gap: 8 }}>
-        <View style={{ height: 13, width: '60%', backgroundColor: '#e2e8f0', borderRadius: 6 }} />
-        <View style={{ height: 11, width: '40%', backgroundColor: '#e2e8f0', borderRadius: 6 }} />
+        <View style={{ height: 13, width: '60%', backgroundColor: colors.skeleton, borderRadius: 6 }} />
+        <View style={{ height: 11, width: '40%', backgroundColor: colors.skeleton, borderRadius: 6 }} />
       </View>
-      <View style={{ height: 14, width: 70, backgroundColor: '#e2e8f0', borderRadius: 6 }} />
+      <View style={{ height: 14, width: 70, backgroundColor: colors.skeleton, borderRadius: 6 }} />
     </Animated.View>
   );
 };
@@ -49,9 +52,12 @@ const SkeletonRow = () => {
 const HomeScreen = () => {
   const navigation = useNavigation();
   const { token, user } = useAuth();
+  const { colors } = useTheme();
+  const homeStyles = useMemo(() => getHomeScreenStyles(colors), [colors]);
 
   const [favoriteGroups, setFavoriteGroups] = useState([]);
   const [loadingFavorites, setLoadingFavorites] = useState(true);
+  const [adminGroupIds, setAdminGroupIds] = useState(new Set());
 
   const [recentScenes, setRecentScenes] = useState([]);
   const [loadingScenes, setLoadingScenes] = useState(true);
@@ -74,8 +80,9 @@ const HomeScreen = () => {
             g => g.isFavorite || g.is_starred || g.starred
           );
           setFavoriteGroups(starred.slice(0, 3));
+          setAdminGroupIds(new Set((result.your || []).map(g => String(g.id))));
         } catch (error) {
-          console.log('Fetch favorites error:', error.message);
+          // Fetch favorites error
         } finally {
           setLoadingFavorites(false);
         }
@@ -108,7 +115,7 @@ const HomeScreen = () => {
           });
           setRecentScenes(normalized);
         } catch (error) {
-          console.log('Fetch recent scenes error:', error.message);
+          // Fetch recent scenes error
         } finally {
           setLoadingScenes(false);
         }
@@ -136,9 +143,9 @@ const HomeScreen = () => {
             };
           });
           setRecentExpenses(normalized);
-        } catch (error) {
-          console.log('Fetch recent expenses error:', error.message);
-        } finally {
+    } catch (error) {
+      console.warn('Fetch recent expenses error:', error.message);
+    } finally {
           setLoadingExpenses(false);
         }
       };
@@ -177,10 +184,13 @@ const HomeScreen = () => {
 
     try {
       await groupsService.toggleStar(token, groupId, newStarred);
+      // Invalidate GroupsScreen cache so it picks up the star change on next focus
+      const userId = String(user?.person_id || user?.id || '');
+      await cache.clear(`groups_${userId}`);
     } catch {
       setFavoriteGroups(prev => [...prev, group]); // revert
     }
-  }, [favoriteGroups, token]);
+  }, [favoriteGroups, token, user]);
 
   const handleGroupPress = useCallback((group) => {
     navigation.navigate('Groups', {
@@ -317,7 +327,11 @@ const HomeScreen = () => {
         ) : (
           recentScenes.map(scene => (
             <RecentSceneCard key={scene.id} scene={scene}
-              onPress={() => navigation.navigate('Scenes', { screen: 'SceneDetail', params: { scene: scene.raw } })} />
+              onPress={() => {
+                const gId = String(scene.raw?.group_id || scene.raw?.group?.id || '');
+                const role = adminGroupIds.has(gId) ? 'admin' : 'member';
+                navigation.navigate('Scenes', { screen: 'SceneDetail', params: { scene: scene.raw, userRole: role } });
+              }} />
           ))
         )}
       </View>

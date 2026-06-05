@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -17,11 +17,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { authService } from '../services/authService';
-import { authStyles } from '../styles/authStyles';
+import { getAuthStyles } from '../styles/authStyles';
+import { useTheme } from '../context/ThemeContext';
 
 const VerifyEmailScreen = () => {
   const navigation = useNavigation();
   const route = useRoute();
+  const { colors, isDark } = useTheme();
+  const authStyles = useMemo(() => getAuthStyles(colors), [colors]);
   const { email } = route.params || {};
 
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
@@ -110,13 +113,12 @@ const VerifyEmailScreen = () => {
   const handleResend = async () => {
     setResendLoading(true);
     try {
-      // Re-trigger signup or a resend endpoint if available
-      // For now we just reset the timer
+      await authService.resendOtp(email);
       setCountdown(60);
       setCanResend(false);
       Alert.alert('OTP Sent', 'A new OTP has been sent to your email.');
     } catch (error) {
-      Alert.alert('Error', 'Could not resend OTP. Please try again.');
+      Alert.alert('Error', error.message || 'Could not resend OTP. Please try again.');
     }
     setResendLoading(false);
   };
@@ -126,7 +128,7 @@ const VerifyEmailScreen = () => {
       style={authStyles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <LinearGradient colors={['#f8fffe', '#ecfeff', '#cffafe']} style={authStyles.gradient}>
+      <LinearGradient colors={isDark ? [colors.background, colors.surface, colors.background] : ['#f8fffe', '#ecfeff', '#cffafe']} style={authStyles.gradient}>
         <ScrollView
           contentContainerStyle={authStyles.scrollContainer}
           showsVerticalScrollIndicator={false}

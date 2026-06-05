@@ -1,9 +1,9 @@
 import { StyleSheet, Platform } from 'react-native';
 
-const createSceneStyles = StyleSheet.create({
+const getCreateSceneStyles = (colors) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8fffe',
+    backgroundColor: colors.background,
   },
   header: {
     flexDirection: 'row',
@@ -11,9 +11,9 @@ const createSceneStyles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 12,
     paddingVertical: 14,
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
     borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
+    borderBottomColor: colors.cardBorder,
   },
   backBtn: {
     padding: 6,
@@ -26,11 +26,11 @@ const createSceneStyles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#06b6d4',
+    backgroundColor: colors.primary,
     gap: 6,
   },
   headerActionBtnDisabled: {
-    backgroundColor: '#e2e8f0',
+    backgroundColor: colors.inputBorder,
   },
   headerActionText: {
     fontSize: 13,
@@ -38,12 +38,12 @@ const createSceneStyles = StyleSheet.create({
     color: '#ffffff',
   },
   headerActionTextDisabled: {
-    color: '#94a3b8',
+    color: colors.textMuted,
   },
   headerTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#0f172a',
+    color: colors.text,
   },
   scrollView: {
     flex: 1,
@@ -58,16 +58,16 @@ const createSceneStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 24,
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#f1f5f9',
+    borderColor: colors.cardBorder,
     marginBottom: 16,
   },
   amountHeaderLabel: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#64748b',
+    color: colors.textSecondary,
     textTransform: 'uppercase',
     letterSpacing: 1,
     marginBottom: 8,
@@ -80,14 +80,14 @@ const createSceneStyles = StyleSheet.create({
   amountCurrencySymbol: {
     fontSize: 24,
     fontWeight: '800',
-    color: '#06b6d4',
+    color: colors.primary,
     marginRight: 6,
     marginTop: 4,
   },
   amountTextInput: {
     fontSize: 34,
     fontWeight: '800',
-    color: '#0f172a',
+    color: colors.text,
     padding: 0,
     minWidth: 100,
     textAlign: 'center',
@@ -97,12 +97,12 @@ const createSceneStyles = StyleSheet.create({
   groupTile: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderWidth: 1,
-    borderColor: '#e0f2fe',
+    borderColor: colors.primaryBorder,
     marginBottom: 16,
   },
   groupIndicator: {
@@ -114,28 +114,28 @@ const createSceneStyles = StyleSheet.create({
   groupTileLabel: {
     fontSize: 10,
     fontWeight: '700',
-    color: '#94a3b8',
+    color: colors.textMuted,
     textTransform: 'uppercase',
   },
   groupTileValue: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#0f172a',
+    color: colors.text,
     marginTop: 2,
   },
   changeGroupText: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#06b6d4',
+    color: colors.primary,
     marginRight: 4,
   },
 
   // 3. Settings List-Style Card panel
   formCard: {
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#f1f5f9',
+    borderColor: colors.cardBorder,
     paddingHorizontal: 16,
     marginBottom: 16,
     shadowColor: '#000',
@@ -149,7 +149,7 @@ const createSceneStyles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: '#f8fafc',
+    borderBottomColor: colors.cardBorder,
   },
   rowIcon: {
     marginRight: 12,
@@ -157,13 +157,13 @@ const createSceneStyles = StyleSheet.create({
   rowLabel: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#475569',
+    color: colors.textSecondary,
     width: 90,
   },
   rowInput: {
     flex: 1,
     fontSize: 14,
-    color: '#0f172a',
+    color: colors.text,
     fontWeight: '600',
     padding: 0,
     textAlign: 'right',
@@ -171,7 +171,7 @@ const createSceneStyles = StyleSheet.create({
   rowTextVal: {
     flex: 1,
     fontSize: 14,
-    color: '#0f172a',
+    color: colors.text,
     fontWeight: '600',
     textAlign: 'right',
     marginRight: 4,
@@ -185,12 +185,12 @@ const createSceneStyles = StyleSheet.create({
   notesLabel: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#475569',
+    color: colors.textSecondary,
     marginBottom: 4,
   },
   notesTextInput: {
     fontSize: 14,
-    color: '#0f172a',
+    color: colors.text,
     fontWeight: '500',
     padding: 0,
     marginTop: 6,
@@ -203,17 +203,17 @@ const createSceneStyles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 12,
     borderTopWidth: 1,
-    borderTopColor: '#f8fafc',
+    borderTopColor: colors.cardBorder,
   },
   receiptLabel: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#475569',
+    color: colors.textSecondary,
   },
   receiptAddBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#ecfeff',
+    backgroundColor: colors.primaryLight,
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 6,
@@ -221,7 +221,7 @@ const createSceneStyles = StyleSheet.create({
   },
   receiptAddText: {
     fontSize: 12,
-    color: '#06b6d4',
+    color: colors.primary,
     fontWeight: '700',
   },
   receiptThumbnailContainer: {
@@ -233,7 +233,7 @@ const createSceneStyles = StyleSheet.create({
     borderRadius: 6,
     resizeMode: 'cover',
     borderWidth: 1,
-    borderColor: '#e2e8f0',
+    borderColor: colors.inputBorder,
   },
   receiptRemoveBadge: {
     position: 'absolute',
@@ -247,17 +247,15 @@ const createSceneStyles = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  
-  
   // Fixed Floating Footer (iOS standard)
   fixedFooter: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
     borderTopWidth: 1,
-    borderTopColor: '#f1f5f9',
+    borderTopColor: colors.cardBorder,
     paddingHorizontal: 20,
     paddingTop: 12,
     paddingBottom: Platform.OS === 'ios' ? 24 : 12,
@@ -269,21 +267,21 @@ const createSceneStyles = StyleSheet.create({
     height: 46,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#cbd5e1',
+    borderColor: colors.inputBorder,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
   },
   cancelBtnTextFoot: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#475569',
+    color: colors.textSecondary,
   },
   submitBtnFoot: {
     flex: 2,
     height: 46,
     borderRadius: 10,
-    backgroundColor: '#06b6d4',
+    backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#06b6d4',
@@ -294,7 +292,7 @@ const createSceneStyles = StyleSheet.create({
   },
   submitBtnDisabled: {
     opacity: 0.5,
-    backgroundColor: '#94a3b8',
+    backgroundColor: colors.textMuted,
     shadowOpacity: 0,
   },
   submitBtnTextFoot: {
@@ -306,11 +304,11 @@ const createSceneStyles = StyleSheet.create({
   // Modal bottoms
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.4)',
+    backgroundColor: colors.overlay,
     justifyContent: 'flex-end',
   },
   bottomSheet: {
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     maxHeight: '75%',
@@ -323,22 +321,22 @@ const createSceneStyles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
+    borderBottomColor: colors.cardBorder,
   },
   sheetTitle: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#0f172a',
+    color: colors.text,
   },
   groupOptionRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#f8fafc',
+    borderBottomColor: colors.cardBorder,
   },
   activeGroupOptionRow: {
-    backgroundColor: '#f0f9ff',
+    backgroundColor: colors.primaryLight,
     borderRadius: 8,
     paddingHorizontal: 8,
   },
@@ -351,10 +349,10 @@ const createSceneStyles = StyleSheet.create({
   groupOptionText: {
     fontSize: 14,
     fontWeight: '500',
-    color: '#334155',
+    color: colors.textSecondary,
   },
   activeGroupOptionText: {
-    color: '#06b6d4',
+    color: colors.primary,
     fontWeight: '700',
   },
 
@@ -366,7 +364,7 @@ const createSceneStyles = StyleSheet.create({
   pickerSubLabel: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#64748b',
+    color: colors.textSecondary,
     alignSelf: 'flex-start',
     marginBottom: 6,
     marginTop: 10,
@@ -377,24 +375,24 @@ const createSceneStyles = StyleSheet.create({
     marginBottom: 14,
   },
   pickerInput: {
-    backgroundColor: '#f1f5f9',
+    backgroundColor: colors.surfaceAlt,
     borderRadius: 8,
     width: 44,
     height: 40,
     textAlign: 'center',
     fontSize: 15,
     fontWeight: '700',
-    color: '#0f172a',
+    color: colors.text,
   },
   pickerSeparator: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#64748b',
+    color: colors.textSecondary,
     marginHorizontal: 6,
   },
   periodToggle: {
     flexDirection: 'row',
-    backgroundColor: '#e2e8f0',
+    backgroundColor: colors.inputBorder,
     borderRadius: 8,
     padding: 2,
     marginLeft: 14,
@@ -405,15 +403,15 @@ const createSceneStyles = StyleSheet.create({
     borderRadius: 6,
   },
   periodBtnActive: {
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
   },
   periodText: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#64748b',
+    color: colors.textSecondary,
   },
   periodTextActive: {
-    color: '#06b6d4',
+    color: colors.primary,
   },
   quickDateRow: {
     flexDirection: 'row',
@@ -421,9 +419,9 @@ const createSceneStyles = StyleSheet.create({
     marginBottom: 16,
   },
   quickDateBtn: {
-    backgroundColor: '#ecfeff',
+    backgroundColor: colors.primaryLight,
     borderWidth: 1,
-    borderColor: '#a5f3fc',
+    borderColor: colors.primaryBorder,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 20,
@@ -431,10 +429,10 @@ const createSceneStyles = StyleSheet.create({
   quickDateText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#0891b2',
+    color: colors.primary,
   },
   saveDateButton: {
-    backgroundColor: '#06b6d4',
+    backgroundColor: colors.primary,
     width: '100%',
     paddingVertical: 12,
     borderRadius: 10,
@@ -447,22 +445,22 @@ const createSceneStyles = StyleSheet.create({
   },
 
   // Member checklist
- memberCheckRow: {
+  memberCheckRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 10,
     paddingHorizontal: 12,
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
     borderRadius: 12,
     marginBottom: 6,
     borderWidth: 1,
-    borderColor: '#f1f5f9', // Clean faint row separator boundary
+    borderColor: colors.cardBorder,
   },
   memberCheckName: {
-    fontSize: 13,           // Slightly cleaner downscaled font weight standard
+    fontSize: 13,
     fontWeight: '600',
-    color: '#0f172a',       // Deep high-end slate dark tone instead of faded charcoal
-    flex: 1,                // Stretches to balance layout safely 
+    color: colors.text,
+    flex: 1,
     letterSpacing: -0.1,
   },
   checkbox: {
@@ -470,16 +468,16 @@ const createSceneStyles = StyleSheet.create({
     height: 22,
     borderRadius: 6,
     borderWidth: 2,
-    borderColor: '#cbd5e1',
+    borderColor: colors.inputBorder,
     alignItems: 'center',
     justifyContent: 'center',
   },
   checkboxSelected: {
-    backgroundColor: '#06b6d4',
-    borderColor: '#06b6d4',
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   closeMembersBtn: {
-    backgroundColor: '#06b6d4',
+    backgroundColor: colors.primary,
     paddingVertical: 12,
     borderRadius: 10,
     alignItems: 'center',
@@ -494,11 +492,11 @@ const createSceneStyles = StyleSheet.create({
   // Map Simulator Modal layout
   mapSafeArea: {
     flex: 1,
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
   },
   mapSheet: {
     flex: 1,
-    backgroundColor: '#f8fffe',
+    backgroundColor: colors.background,
   },
   mapSheetHeader: {
     flexDirection: 'row',
@@ -506,26 +504,26 @@ const createSceneStyles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 14,
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
     borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
+    borderBottomColor: colors.cardBorder,
   },
   mapSheetTitle: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#0f172a',
+    color: colors.text,
   },
   mapSearchContainer: {
     padding: 12,
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
     borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
+    borderBottomColor: colors.cardBorder,
     zIndex: 10,
   },
   mapSearchInputRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f1f5f9',
+    backgroundColor: colors.surfaceAlt,
     borderRadius: 10,
     paddingHorizontal: 12,
     height: 40,
@@ -533,15 +531,15 @@ const createSceneStyles = StyleSheet.create({
   mapSearchInput: {
     flex: 1,
     fontSize: 13,
-    color: '#0f172a',
+    color: colors.text,
     fontWeight: '500',
   },
   autocompleteList: {
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
     borderRadius: 10,
     marginTop: 8,
     borderWidth: 1,
-    borderColor: '#e2e8f0',
+    borderColor: colors.inputBorder,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
@@ -553,16 +551,16 @@ const createSceneStyles = StyleSheet.create({
     alignItems: 'center',
     padding: 10,
     borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
+    borderBottomColor: colors.cardBorder,
   },
   autocompleteName: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#0f172a',
+    color: colors.text,
   },
   autocompleteAddress: {
     fontSize: 11,
-    color: '#64748b',
+    color: colors.textSecondary,
     marginTop: 1,
   },
   mapVisualContainer: {
@@ -624,7 +622,7 @@ const createSceneStyles = StyleSheet.create({
   },
   landmark: {
     position: 'absolute',
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
     borderRadius: 20,
     paddingHorizontal: 10,
     paddingVertical: 6,
@@ -640,7 +638,7 @@ const createSceneStyles = StyleSheet.create({
   landmarkText: {
     fontSize: 10,
     fontWeight: '700',
-    color: '#334155',
+    color: colors.textSecondary,
   },
   mapPinContainer: {
     position: 'absolute',
@@ -656,7 +654,7 @@ const createSceneStyles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#0f172a',
+    backgroundColor: colors.text,
     marginTop: -6,
   },
   myLocationFab: {
@@ -666,7 +664,7 @@ const createSceneStyles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
@@ -677,7 +675,7 @@ const createSceneStyles = StyleSheet.create({
     zIndex: 15,
   },
   mapFooterCard: {
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
     padding: 16,
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
@@ -695,16 +693,16 @@ const createSceneStyles = StyleSheet.create({
   mapFooterName: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#0f172a',
+    color: colors.text,
   },
   mapFooterAddress: {
     fontSize: 11,
-    color: '#64748b',
+    color: colors.textSecondary,
     marginTop: 2,
     lineHeight: 14,
   },
   mapConfirmButton: {
-    backgroundColor: '#06b6d4',
+    backgroundColor: colors.primary,
     paddingVertical: 12,
     borderRadius: 10,
     alignItems: 'center',
@@ -714,12 +712,13 @@ const createSceneStyles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
   },
+
   // 5. Split Configuration Section
   splitSection: {
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: '#f1f5f9',
+    borderColor: colors.cardBorder,
     padding: 16,
     marginBottom: 20,
     shadowColor: '#0f172a',
@@ -731,12 +730,12 @@ const createSceneStyles = StyleSheet.create({
   splitSectionTitle: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#0f172a',
+    color: colors.text,
     letterSpacing: -0.2,
   },
   splitSectionSubtitle: {
     fontSize: 12,
-    color: '#64748b',
+    color: colors.textSecondary,
     fontWeight: '400',
     marginTop: 2,
     marginBottom: 14,
@@ -744,7 +743,7 @@ const createSceneStyles = StyleSheet.create({
   },
   pillTabsContainer: {
     flexDirection: 'row',
-    backgroundColor: '#f1f5f9',
+    backgroundColor: colors.surfaceAlt,
     borderRadius: 10,
     padding: 3,
     marginBottom: 14,
@@ -756,7 +755,7 @@ const createSceneStyles = StyleSheet.create({
     borderRadius: 7,
   },
   activePillTab: {
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
     shadowColor: '#0f172a',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.04,
@@ -766,15 +765,15 @@ const createSceneStyles = StyleSheet.create({
   pillTabText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#64748b',
+    color: colors.textSecondary,
   },
   activePillTabText: {
-    color: '#0891b2',
+    color: colors.primary,
   },
   memberSelectorRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#ecfeff',
+    backgroundColor: colors.primaryLight,
     borderRadius: 10,
     paddingHorizontal: 12,
     height: 40,
@@ -782,7 +781,7 @@ const createSceneStyles = StyleSheet.create({
   },
   memberSelectorText: {
     fontSize: 13,
-    color: '#0891b2',
+    color: colors.primary,
     fontWeight: '600',
     marginLeft: 6,
   },
@@ -792,7 +791,7 @@ const createSceneStyles = StyleSheet.create({
   },
   emptyPromptText: {
     fontSize: 12,
-    color: '#94a3b8',
+    color: colors.textMuted,
     fontWeight: '400',
   },
   emptyGroupsState: {
@@ -801,26 +800,26 @@ const createSceneStyles = StyleSheet.create({
   },
   emptyGroupsText: {
     fontSize: 13,
-    color: '#64748b',
+    color: colors.textSecondary,
     fontWeight: '500',
   },
   membersSplitCard: {
     gap: 8,
   },
-  
-  // PREMIUM MINIMALIST DESIGNER CARD
+
+  // MEMBER LIST ROW
   memberListRow: {
     flexDirection: 'column',
     alignItems: 'stretch',
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
     paddingVertical: 12,
     paddingHorizontal: 14,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#f1f5f9',
+    borderColor: colors.cardBorder,
     marginBottom: 2,
   },
-  
+
   // TOP ROW
   memberTopRow: {
     flexDirection: 'row',
@@ -840,7 +839,7 @@ const createSceneStyles = StyleSheet.create({
     marginLeft: 10,
     justifyContent: 'center',
   },
-  
+
   // AVATARS
   memberAvatarCircle: {
     width: 36,
@@ -858,14 +857,14 @@ const createSceneStyles = StyleSheet.create({
   avatarTextLetter: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#ffffff', // Crisp white profile text
+    color: '#ffffff',
   },
-  
-  // TYPOGRAPHY FOR NAMES (Downsized to 13)
+
+  // TYPOGRAPHY FOR NAMES
   memberNameText: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#0f172a',
+    color: colors.text,
     letterSpacing: -0.1,
   },
   smallMetaRow: {
@@ -873,37 +872,36 @@ const createSceneStyles = StyleSheet.create({
   },
   smallMetaText: {
     fontSize: 11,
-    color: '#94a3b8',
+    color: colors.textMuted,
     fontWeight: '400',
   },
   memberRightCol: {
     alignItems: 'flex-end',
     justifyContent: 'center',
   },
-  
-  // FINANCIAL AMOUNTS (Grayed out so it sits nicely in the background)
+
+  // FINANCIAL AMOUNTS
   equalSplitText: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#64748b', 
+    color: colors.textSecondary,
     textAlign: 'right',
   },
   sharingRightCol: {
     alignItems: 'flex-end',
     justifyContent: 'center',
   },
-  
-  // "SHARE" TEXT (Downsized to 10 and Gray)
+
   shareSubLabel: {
     fontSize: 10,
-    color: '#94a3b8', // Gray color
+    color: colors.textMuted,
     fontWeight: '600',
     textAlign: 'right',
     letterSpacing: 0.2,
-    textTransform: 'uppercase', // Makes tiny text look much cleaner
+    textTransform: 'uppercase',
   },
 
-  // BOTTOM ROW: LOW-PROFILE COMPACT INPUT CHIPS
+  // BOTTOM ROW INPUT CHIPS
   memberInputsRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -917,7 +915,7 @@ const createSceneStyles = StyleSheet.create({
   memberInputLabel: {
     fontSize: 9,
     fontWeight: '600',
-    color: '#94a3b8',
+    color: colors.textMuted,
     marginBottom: 3,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
@@ -925,7 +923,7 @@ const createSceneStyles = StyleSheet.create({
   memberInputBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f8fafc',
+    backgroundColor: colors.inputBg,
     borderRadius: 8,
     paddingHorizontal: 8,
     height: 32,
@@ -933,7 +931,7 @@ const createSceneStyles = StyleSheet.create({
   memberInputCurrency: {
     fontSize: 11,
     fontWeight: '600',
-    color: '#64748b',
+    color: colors.textSecondary,
     marginRight: 2,
     includeFontPadding: false,
   },
@@ -941,7 +939,7 @@ const createSceneStyles = StyleSheet.create({
     flex: 1,
     fontSize: 12,
     fontWeight: '600',
-    color: '#0f172a',
+    color: colors.text,
     padding: 0,
     margin: 0,
     height: '100%',
@@ -951,7 +949,7 @@ const createSceneStyles = StyleSheet.create({
   individualInputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f8fafc',
+    backgroundColor: colors.inputBg,
     borderRadius: 8,
     paddingHorizontal: 8,
     width: 80,
@@ -960,7 +958,7 @@ const createSceneStyles = StyleSheet.create({
   indivCurrency: {
     fontSize: 11,
     fontWeight: '600',
-    color: '#64748b',
+    color: colors.textSecondary,
     marginRight: 2,
     includeFontPadding: false,
   },
@@ -968,7 +966,7 @@ const createSceneStyles = StyleSheet.create({
     flex: 1,
     fontSize: 12,
     fontWeight: '600',
-    color: '#0f172a',
+    color: colors.text,
     height: '100%',
     padding: 0,
     margin: 0,
@@ -977,14 +975,14 @@ const createSceneStyles = StyleSheet.create({
     includeFontPadding: false,
   },
   additionalBadge: {
-    backgroundColor: '#e6f4ea',
+    backgroundColor: colors.successLight,
     paddingHorizontal: 5,
     paddingVertical: 1.5,
     borderRadius: 4,
     marginLeft: 4,
   },
   additionalText: {
-    color: '#137333',
+    color: '#10b981',
     fontSize: 10,
     fontWeight: '600',
   },
@@ -1000,7 +998,7 @@ const createSceneStyles = StyleSheet.create({
   },
   paidLabel: {
     fontSize: 11,
-    color: '#94a3b8',
+    color: colors.textMuted,
     fontWeight: '500',
   },
   paidInputWrapper: {
@@ -1012,7 +1010,7 @@ const createSceneStyles = StyleSheet.create({
   },
   paidCurrency: {
     fontSize: 12,
-    color: '#64748b',
+    color: colors.textSecondary,
     fontWeight: '600',
     marginRight: 2,
   },
@@ -1022,7 +1020,7 @@ const createSceneStyles = StyleSheet.create({
     paddingHorizontal: 0,
     textAlign: 'right',
     fontWeight: '600',
-    color: '#0f172a',
+    color: colors.text,
     fontSize: 13,
   },
   statusBanner: {
@@ -1035,17 +1033,17 @@ const createSceneStyles = StyleSheet.create({
     gap: 6,
   },
   bannerOk: {
-    backgroundColor: '#f0fdf4',
+    backgroundColor: colors.successLight,
     borderWidth: 1,
     borderColor: '#bbf7d0',
   },
   bannerUnder: {
-    backgroundColor: '#fffbeb',
+    backgroundColor: colors.warningLight,
     borderWidth: 1,
     borderColor: '#fef08a',
   },
   bannerOver: {
-    backgroundColor: '#fef2f2',
+    backgroundColor: colors.errorLight,
     borderWidth: 1,
     borderColor: '#fecaca',
   },
@@ -1053,14 +1051,14 @@ const createSceneStyles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
-  textOk: { color: '#166534' },
-  textUnder: { color: '#854d0e' },
-  textOver: { color: '#991b1b' },
+  textOk: { color: colors.success },
+  textUnder: { color: colors.warning },
+  textOver: { color: colors.error },
 
   adminNoticeRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff7ed',
+    backgroundColor: colors.warningLight,
     borderWidth: 1,
     borderColor: '#ffedd5',
     paddingHorizontal: 12,
@@ -1071,19 +1069,18 @@ const createSceneStyles = StyleSheet.create({
   },
   adminNoticeText: {
     fontSize: 11,
-    color: '#9a3412',
+    color: colors.warning,
     fontWeight: '500',
     lineHeight: 15,
   },
   memberShareLabel: {
     fontSize: 10,
-    color: '#94a3b8', // Sleek gray color
+    color: colors.textMuted,
     fontWeight: '600',
-    textTransform: 'uppercase', // Makes it look super professional
+    textTransform: 'uppercase',
     letterSpacing: 0.2,
     marginTop: 2,
   },
-  
 });
 
-export default createSceneStyles;
+export default getCreateSceneStyles;

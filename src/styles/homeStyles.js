@@ -1,9 +1,9 @@
 import { StyleSheet } from 'react-native';
 
-export const homeStyles = StyleSheet.create({
+export const getHomeStyles = (colors) => StyleSheet.create({
   scrollView: {
     flex: 1,
-    backgroundColor: '#f8fffe',
+    backgroundColor: colors.background,
   },
   scrollContent: {
     paddingBottom: 120,
@@ -18,7 +18,7 @@ export const homeStyles = StyleSheet.create({
     marginBottom: 20,
   },
 
-  // Section Header - unified for all sections
+  // Section Header
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -33,7 +33,7 @@ export const homeStyles = StyleSheet.create({
   sectionTitle: {
     fontSize: 17,
     fontWeight: '700',
-    color: '#0f172a',
+    color: colors.text,
   },
   viewAllButton: {
     flexDirection: 'row',
@@ -43,12 +43,12 @@ export const homeStyles = StyleSheet.create({
   viewAllText: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#06b6d4',
+    color: colors.primary,
   },
 
   // Group Card Styles
   groupCard: {
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
     borderRadius: 16,
     padding: 16,
     shadowColor: '#0f172a',
@@ -57,7 +57,7 @@ export const homeStyles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 2,
     borderWidth: 1,
-    borderColor: '#f1f5f9',
+    borderColor: colors.cardBorder,
   },
   groupCardPressed: {
     transform: [{ scale: 0.98 }],
@@ -86,14 +86,14 @@ export const homeStyles = StyleSheet.create({
   groupName: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#0f172a',
+    color: colors.text,
     flex: 1,
     letterSpacing: -0.3,
   },
   statusContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f8fafc',
+    backgroundColor: colors.surfaceAlt,
     paddingHorizontal: 6,
     paddingVertical: 3,
     borderRadius: 6,
@@ -122,17 +122,17 @@ export const homeStyles = StyleSheet.create({
   roleText: {
     fontSize: 11,
     fontWeight: '600',
-    color: '#6b7280',
+    color: colors.textSecondary,
   },
   lastActivity: {
     fontSize: 11,
-    color: '#9ca3af',
+    color: colors.textMuted,
     fontWeight: '500',
   },
   favoriteButton: {
     padding: 6,
     borderRadius: 6,
-    backgroundColor: '#f8fafc',
+    backgroundColor: colors.surfaceAlt,
     marginLeft: 8,
   },
   balanceSection: {
@@ -141,7 +141,7 @@ export const homeStyles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 10,
     marginBottom: 12,
-    backgroundColor: '#f8fafc',
+    backgroundColor: colors.surfaceAlt,
     borderRadius: 8,
     paddingHorizontal: 12,
   },
@@ -150,7 +150,7 @@ export const homeStyles = StyleSheet.create({
   },
   balanceLabel: {
     fontSize: 12,
-    color: '#64748b',
+    color: colors.textSecondary,
     fontWeight: '500',
     marginBottom: 2,
   },
@@ -170,7 +170,7 @@ export const homeStyles = StyleSheet.create({
   },
   membersText: {
     fontSize: 12,
-    color: '#64748b',
+    color: colors.textSecondary,
     fontWeight: '500',
   },
   memberAvatars: {
@@ -183,7 +183,7 @@ export const homeStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
-    borderColor: '#ffffff',
+    borderColor: colors.card,
   },
   avatarOverlap: {
     marginLeft: -10,
@@ -194,7 +194,7 @@ export const homeStyles = StyleSheet.create({
     color: '#ffffff',
   },
   avatarMore: {
-    backgroundColor: '#64748b',
+    backgroundColor: colors.textSecondary,
   },
   avatarMoreText: {
     fontSize: 9,
@@ -221,7 +221,7 @@ export const homeStyles = StyleSheet.create({
   actionLabel: {
     fontSize: 11,
     fontWeight: '600',
-    color: '#374151',
+    color: colors.textSecondary,
     textAlign: 'center',
   },
 
@@ -230,16 +230,16 @@ export const homeStyles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 32,
     paddingHorizontal: 20,
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#f1f5f9',
+    borderColor: colors.cardBorder,
   },
   emptyFavoritesIcon: {
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: '#f1f5f9',
+    backgroundColor: colors.surfaceAlt,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 12,
@@ -247,18 +247,18 @@ export const homeStyles = StyleSheet.create({
   emptyFavoritesTitle: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#0f172a',
+    color: colors.text,
     marginBottom: 4,
   },
   emptyFavoritesSubtitle: {
     fontSize: 13,
-    color: '#64748b',
+    color: colors.textSecondary,
     textAlign: 'center',
     lineHeight: 18,
     marginBottom: 16,
   },
   browseGroupsButton: {
-    backgroundColor: '#06b6d4',
+    backgroundColor: colors.primary,
     paddingHorizontal: 20,
     paddingVertical: 8,
     borderRadius: 8,
@@ -271,7 +271,7 @@ export const homeStyles = StyleSheet.create({
 
   // Recent Cards (Scenes & Expenses)
   recentCard: {
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
     borderRadius: 12,
     padding: 14,
     flexDirection: 'row',
@@ -284,7 +284,7 @@ export const homeStyles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 2,
     borderWidth: 1,
-    borderColor: '#f1f5f9',
+    borderColor: colors.cardBorder,
   },
   recentCardLeft: {
     flexDirection: 'row',
@@ -306,7 +306,7 @@ export const homeStyles = StyleSheet.create({
   recentCardTitle: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#0f172a',
+    color: colors.text,
     marginBottom: 4,
   },
   recentCardMeta: {
@@ -317,12 +317,12 @@ export const homeStyles = StyleSheet.create({
   },
   recentCardSubtitle: {
     fontSize: 12,
-    color: '#94a3b8',
+    color: colors.textMuted,
     fontWeight: '500',
   },
   recentCardDot: {
     fontSize: 12,
-    color: '#cbd5e1',
+    color: colors.skeleton,
   },
   recentCardRight: {
     alignItems: 'flex-end',
@@ -330,12 +330,12 @@ export const homeStyles = StyleSheet.create({
   recentCardAmount: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#0f172a',
+    color: colors.text,
     marginBottom: 2,
   },
   recentCardShare: {
     fontSize: 11,
-    color: '#94a3b8',
+    color: colors.textMuted,
     fontWeight: '500',
   },
 
@@ -356,7 +356,7 @@ export const homeStyles = StyleSheet.create({
 
   // Skeleton loading styles
   skeletonCard: {
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
     borderRadius: 16,
     padding: 16,
     shadowColor: '#0f172a',
@@ -365,7 +365,7 @@ export const homeStyles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 2,
     borderWidth: 1,
-    borderColor: '#f1f5f9',
+    borderColor: colors.cardBorder,
   },
   skeletonRow: {
     flexDirection: 'row',
@@ -377,24 +377,24 @@ export const homeStyles = StyleSheet.create({
     width: 3,
     height: 16,
     borderRadius: 2,
-    backgroundColor: '#e2e8f0',
+    backgroundColor: colors.skeleton,
   },
   skeletonTitle: {
     flex: 1,
     height: 18,
     borderRadius: 6,
-    backgroundColor: '#e2e8f0',
+    backgroundColor: colors.skeleton,
   },
   skeletonBadge: {
     width: 60,
     height: 18,
     borderRadius: 6,
-    backgroundColor: '#e2e8f0',
+    backgroundColor: colors.skeleton,
   },
   skeletonBalance: {
     height: 52,
     borderRadius: 8,
-    backgroundColor: '#f1f5f9',
+    backgroundColor: colors.surfaceAlt,
     marginBottom: 16,
   },
   skeletonActions: {
@@ -405,7 +405,7 @@ export const homeStyles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: '#e2e8f0',
+    backgroundColor: colors.skeleton,
   },
 
   // Split Bill / Create Expense Button
@@ -413,12 +413,12 @@ export const homeStyles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#06b6d4',
+    backgroundColor: colors.primary,
     borderRadius: 12,
     paddingVertical: 13,
     marginTop: 4,
     gap: 8,
-    shadowColor: '#06b6d4',
+    shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.25,
     shadowRadius: 8,

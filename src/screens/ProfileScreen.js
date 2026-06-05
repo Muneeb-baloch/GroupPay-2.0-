@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -21,10 +21,13 @@ import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../context/AuthContext';
 import { authService } from '../services/authService';
 import { filesService } from '../services/filesService';
+import { useTheme } from '../context/ThemeContext';
 
 const ProfileScreen = () => {
   const navigation = useNavigation();
   const { user, token, logout, updateUser } = useAuth();
+  const { colors, isDark, toggleTheme } = useTheme();
+  const styles = useMemo(() => getStyles(colors), [colors]);
 
   const fullName = user?.fullname || user?.full_name || user?.name || '';
   const profileInitial = (fullName || user?.email || 'U').charAt(0).toUpperCase();
@@ -34,6 +37,22 @@ const ProfileScreen = () => {
   const [profilePicUrl, setProfilePicUrl] = useState(user?.profile_picture_url || null);
   const [uploadingPic, setUploadingPic] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  // Refresh profile from API on mount to get latest data
+  useEffect(() => {
+    if (!token) return;
+    authService.getProfile(token)
+      .then((data) => {
+        const freshUser = data?.data?.user || data?.data || data?.user || data;
+        if (freshUser && typeof freshUser === 'object') {
+          updateUser(freshUser);
+          if (freshUser.username) setUsername(freshUser.username);
+          if (freshUser.phone) setPhone(freshUser.phone);
+          if (freshUser.profile_picture_url) setProfilePicUrl(freshUser.profile_picture_url);
+        }
+      })
+      .catch(() => {});
+  }, [token]);
 
   const spinValue = useRef(new Animated.Value(0)).current;
   const spinAnim = useRef(null);
@@ -137,12 +156,12 @@ const ProfileScreen = () => {
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
-      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.headerBg} />
 
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()} activeOpacity={0.7}>
-          <Ionicons name="arrow-back" size={22} color="#0f172a" />
+          <Ionicons name="arrow-back" size={22} color={colors.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Profile</Text>
         <View style={{ width: 36 }} />
@@ -272,14 +291,14 @@ const ProfileScreen = () => {
           <View style={styles.card}>
             <Text style={styles.cardLabel}>SETTINGS</Text>
 
-            {/* Dark Mode — placeholder */}
-            <TouchableOpacity style={styles.settingRow} activeOpacity={0.7}>
-              <View style={[styles.settingIcon, { backgroundColor: '#1e293b15' }]}>
-                <Ionicons name="moon-outline" size={18} color="#1e293b" />
+            {/* Dark Mode Toggle */}
+            <TouchableOpacity style={styles.settingRow} onPress={toggleTheme} activeOpacity={0.7}>
+              <View style={[styles.settingIcon, { backgroundColor: isDark ? 'rgba(6,182,212,0.15)' : '#f0f9ff' }]}>
+                <Ionicons name={isDark ? 'sunny-outline' : 'moon-outline'} size={18} color={colors.primary} />
               </View>
-              <Text style={styles.settingText}>Dark Mode</Text>
-              <View style={styles.comingSoonBadge}>
-                <Text style={styles.comingSoonText}>Soon</Text>
+              <Text style={styles.settingText}>{isDark ? 'Light Mode' : 'Dark Mode'}</Text>
+              <View style={[styles.toggleTrack, isDark && styles.toggleTrackActive]}>
+                <View style={[styles.toggleThumb, isDark && styles.toggleThumbActive]} />
               </View>
             </TouchableOpacity>
 
@@ -302,24 +321,24 @@ const ProfileScreen = () => {
   );
 };
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8fffe' },
+const getStyles = (colors) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.background },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
     paddingVertical: 14,
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.headerBg,
     borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
+    borderBottomColor: colors.cardBorder,
   },
   backButton: {
     width: 36, height: 36, borderRadius: 10,
-    backgroundColor: '#f1f5f9',
+    backgroundColor: colors.surfaceAlt,
     alignItems: 'center', justifyContent: 'center',
   },
-  headerTitle: { fontSize: 17, fontWeight: '700', color: '#0f172a' },
+  headerTitle: { fontSize: 17, fontWeight: '700', color: colors.text },
   scrollContent: { paddingHorizontal: 20, paddingTop: 24 },
 
   // Avatar
@@ -327,14 +346,14 @@ const styles = StyleSheet.create({
   avatarWrapper: { position: 'relative', marginBottom: 12 },
   avatar: {
     width: 88, height: 88, borderRadius: 44,
-    backgroundColor: '#06b6d4',
+    backgroundColor: colors.primary,
     alignItems: 'center', justifyContent: 'center',
-    borderWidth: 3, borderColor: '#e0f2fe',
+    borderWidth: 3, borderColor: colors.primaryBorder,
   },
   avatarText: { fontSize: 32, fontWeight: '800', color: '#ffffff' },
   avatarImage: {
     width: 88, height: 88, borderRadius: 44,
-    borderWidth: 3, borderColor: '#e0f2fe',
+    borderWidth: 3, borderColor: colors.primaryBorder,
   },
   miniSpinner: {
     width: 12, height: 12, borderRadius: 6,
@@ -345,50 +364,51 @@ const styles = StyleSheet.create({
   cameraButton: {
     position: 'absolute', bottom: 0, right: 0,
     width: 28, height: 28, borderRadius: 14,
-    backgroundColor: '#0891b2',
+    backgroundColor: colors.primaryDark,
     alignItems: 'center', justifyContent: 'center',
-    borderWidth: 2, borderColor: '#ffffff',
+    borderWidth: 2, borderColor: colors.surface,
   },
-  avatarName: { fontSize: 18, fontWeight: '700', color: '#0f172a', marginBottom: 2 },
-  avatarEmail: { fontSize: 13, color: '#64748b', fontWeight: '500' },
+  avatarName: { fontSize: 18, fontWeight: '700', color: colors.text, marginBottom: 2 },
+  avatarEmail: { fontSize: 13, color: colors.textSecondary, fontWeight: '500' },
 
   // Card
   card: {
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
     borderRadius: 16, padding: 16,
     marginBottom: 14,
     shadowColor: '#0f172a',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.04, shadowRadius: 6, elevation: 2,
+    borderWidth: 1, borderColor: colors.cardBorder,
   },
   cardLabel: {
-    fontSize: 11, fontWeight: '700', color: '#94a3b8',
+    fontSize: 11, fontWeight: '700', color: colors.textMuted,
     letterSpacing: 0.8, marginBottom: 12,
   },
-  divider: { height: 1, backgroundColor: '#f1f5f9', marginVertical: 4 },
+  divider: { height: 1, backgroundColor: colors.divider, marginVertical: 4 },
 
   // Field rows
   fieldRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, gap: 12 },
   fieldIcon: {
     width: 32, height: 32, borderRadius: 8,
-    backgroundColor: '#f8fafc',
+    backgroundColor: colors.surfaceAlt,
     alignItems: 'center', justifyContent: 'center',
   },
   fieldContent: { flex: 1 },
-  fieldLabel: { fontSize: 11, color: '#94a3b8', fontWeight: '600', marginBottom: 2 },
-  fieldValueReadOnly: { fontSize: 15, color: '#0f172a', fontWeight: '500' },
+  fieldLabel: { fontSize: 11, color: colors.textMuted, fontWeight: '600', marginBottom: 2 },
+  fieldValueReadOnly: { fontSize: 15, color: colors.text, fontWeight: '500' },
   fieldInput: {
-    fontSize: 15, color: '#0f172a', fontWeight: '500',
+    fontSize: 15, color: colors.inputText, fontWeight: '500',
     paddingVertical: 0,
   },
 
   // Save button
   saveButton: {
-    backgroundColor: '#06b6d4',
+    backgroundColor: colors.primary,
     borderRadius: 12, paddingVertical: 14,
     alignItems: 'center', justifyContent: 'center',
     marginBottom: 14,
-    shadowColor: '#06b6d4',
+    shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.25, shadowRadius: 8, elevation: 5,
   },
@@ -410,13 +430,18 @@ const styles = StyleSheet.create({
     width: 36, height: 36, borderRadius: 10,
     alignItems: 'center', justifyContent: 'center',
   },
-  settingText: { flex: 1, fontSize: 15, fontWeight: '500', color: '#0f172a' },
-  comingSoonBadge: {
-    backgroundColor: '#f1f5f9',
-    paddingHorizontal: 8, paddingVertical: 3,
-    borderRadius: 6,
+  settingText: { flex: 1, fontSize: 15, fontWeight: '500', color: colors.text },
+  toggleTrack: {
+    width: 44, height: 24, borderRadius: 12,
+    backgroundColor: colors.skeleton,
+    justifyContent: 'center', paddingHorizontal: 2,
   },
-  comingSoonText: { fontSize: 11, fontWeight: '600', color: '#64748b' },
+  toggleTrackActive: { backgroundColor: colors.primary },
+  toggleThumb: {
+    width: 20, height: 20, borderRadius: 10,
+    backgroundColor: '#ffffff',
+  },
+  toggleThumbActive: { alignSelf: 'flex-end' },
 });
 
 export default ProfileScreen;

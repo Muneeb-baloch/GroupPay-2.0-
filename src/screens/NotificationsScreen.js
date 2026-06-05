@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -17,18 +17,29 @@ import { useAuth } from '../context/AuthContext';
 import { invitesService } from '../services/invitesService';
 import { notificationsService } from '../services/notificationsService';
 import { formatRelativeTime } from '../utils/helpers';
+import { useTheme } from '../context/ThemeContext';
 
-const NOTIFICATION_ICONS = {
-  invite:      { icon: 'person-add',        color: '#06b6d4', bg: '#f0fdfa' },
-  payment:     { icon: 'wallet',             color: '#10b981', bg: '#f0fdf4' },
-  group:       { icon: 'people',             color: '#8b5cf6', bg: '#f5f3ff' },
-  transaction: { icon: 'receipt',            color: '#f59e0b', bg: '#fffbeb' },
-  system:      { icon: 'notifications',      color: '#64748b', bg: '#f8fafc' },
+const NOTIFICATION_ICONS_LIGHT = {
+  invite:      { icon: 'person-add',           color: '#06b6d4', bg: '#f0fdfa' },
+  payment:     { icon: 'wallet',               color: '#10b981', bg: '#f0fdf4' },
+  group:       { icon: 'people',               color: '#8b5cf6', bg: '#f5f3ff' },
+  transaction: { icon: 'receipt',              color: '#f59e0b', bg: '#fffbeb' },
+  system:      { icon: 'notifications',        color: '#64748b', bg: '#f8fafc' },
   default:     { icon: 'notifications-outline', color: '#06b6d4', bg: '#f0fdfa' },
 };
+const NOTIFICATION_ICONS_DARK = {
+  invite:      { icon: 'person-add',           color: '#06b6d4', bg: 'rgba(6,182,212,0.15)' },
+  payment:     { icon: 'wallet',               color: '#10b981', bg: 'rgba(16,185,129,0.15)' },
+  group:       { icon: 'people',               color: '#8b5cf6', bg: 'rgba(139,92,246,0.15)' },
+  transaction: { icon: 'receipt',              color: '#f59e0b', bg: 'rgba(245,158,11,0.15)' },
+  system:      { icon: 'notifications',        color: '#64748b', bg: 'rgba(100,116,139,0.15)' },
+  default:     { icon: 'notifications-outline', color: '#06b6d4', bg: 'rgba(6,182,212,0.15)' },
+};
 
-const getNotifStyle = (type) =>
-  NOTIFICATION_ICONS[type?.toLowerCase()] || NOTIFICATION_ICONS.default;
+const getNotifStyle = (type, isDark) => {
+  const map = isDark ? NOTIFICATION_ICONS_DARK : NOTIFICATION_ICONS_LIGHT;
+  return map[type?.toLowerCase()] || map.default;
+};
 
 const pickFirst = (...values) => values.find(value => value !== undefined && value !== null && value !== '');
 
@@ -194,6 +205,8 @@ const normalizeSystemNotification = (notification, index = 0) => {
 const NotificationsScreen = () => {
   const navigation = useNavigation();
   const { token } = useAuth();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => getStyles(colors), [colors]);
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -246,7 +259,7 @@ const NotificationsScreen = () => {
 
       setNotifications(merged);
     } catch (error) {
-      console.log('Fetch notifications error:', error.message);
+      console.warn('Fetch notifications error:', error.message);
     } finally {
       setLoading(false);
     }
@@ -290,6 +303,59 @@ const NotificationsScreen = () => {
       setMarkingAll(false);
     }
   };
+
+  const handleNotificationPress = useCallback(async (item) => {
+    const isRead = item.is_read || item.read;
+    if (!isRead) {
+      handleMarkRead(item.id);
+    }
+
+    const type = (item.type || '').toLowerCase();
+    const isInvite = type === 'invite' || item.source === 'invite' || !!item.inviteId;
+
+    // Invites are handled inline (accept/decline) — no navigation needed
+    if (isInvite) return;
+
+    // Extract group_id from any field the API might use
+    const groupId =
+      item.group_id ??
+      item.groupId ??
+      item.meta?.group_id ??
+      item.data?.group_id ??
+      item.entity_id ??
+      null;
+
+    if (type === 'payment' || type === 'deposit') {
+      if (groupId) {
+        navigation.navigate('MainApp', {
+          screen: 'Groups',
+          params: { screen: 'Deposits', params: { groupId } },
+        });
+      } else {
+        navigation.navigate('MainApp', { screen: 'Groups' });
+      }
+      return;
+    }
+
+    if (type === 'transaction') {
+      if (groupId) {
+        navigation.navigate('MainApp', {
+          screen: 'Groups',
+          params: { screen: 'Transactions', params: { groupId } },
+        });
+      } else {
+        navigation.navigate('MainApp', { screen: 'Groups' });
+      }
+      return;
+    }
+
+    if (type === 'group') {
+      navigation.navigate('MainApp', { screen: 'Groups' });
+      return;
+    }
+
+    // system / default — nothing to navigate to
+  }, [navigation]);
 
   const handleInviteAction = async (item, status) => {
     const inviteId = item?.inviteId;
@@ -337,7 +403,7 @@ const NotificationsScreen = () => {
 
   const renderNotification = ({ item }) => {
     const isRead = item.is_read || item.read;
-    const style = getNotifStyle(item.type);
+    const style = getNotifStyle(item.type, isDark);
     const time = formatRelativeTime(item.created_at || item.createdAt);
     const actionInviteId = item?.inviteId || null;
     const isInvite = item.source === 'invite' || item.type === 'invite' || !!item.inviteId;
@@ -347,7 +413,7 @@ const NotificationsScreen = () => {
     return (
       <TouchableOpacity
         style={[styles.notifCard, !isRead && styles.notifCardUnread]}
-        onPress={() => !isRead && handleMarkRead(item.id)}
+        onPress={() => handleNotificationPress(item)}
         activeOpacity={0.75}
       >
         {/* Unread dot */}
@@ -468,12 +534,12 @@ const NotificationsScreen = () => {
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
-      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.headerBg} />
 
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()} activeOpacity={0.7}>
-          <Ionicons name="arrow-back" size={22} color="#0f172a" />
+          <Ionicons name="arrow-back" size={22} color={colors.text} />
         </TouchableOpacity>
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>Notifications</Text>
@@ -503,27 +569,27 @@ const NotificationsScreen = () => {
   );
 };
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8fffe' },
+const getStyles = (colors) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.background },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
     paddingVertical: 14,
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.headerBg,
     borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
+    borderBottomColor: colors.cardBorder,
   },
   backButton: {
     width: 36, height: 36, borderRadius: 10,
-    backgroundColor: '#f1f5f9',
+    backgroundColor: colors.surfaceAlt,
     alignItems: 'center', justifyContent: 'center',
   },
   headerCenter: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  headerTitle: { fontSize: 17, fontWeight: '700', color: '#0f172a' },
+  headerTitle: { fontSize: 17, fontWeight: '700', color: colors.text },
   headerBadge: {
-    backgroundColor: '#06b6d4',
+    backgroundColor: colors.primary,
     borderRadius: 10, paddingHorizontal: 7, paddingVertical: 2,
   },
   headerBadgeText: { fontSize: 11, fontWeight: '700', color: '#ffffff' },
@@ -535,14 +601,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: 6,
     alignSelf: 'flex-end',
     paddingHorizontal: 12, paddingVertical: 6,
-    backgroundColor: '#f0fdfa',
+    backgroundColor: colors.primaryLight,
     borderRadius: 8, marginBottom: 8,
   },
-  markAllText: { fontSize: 13, fontWeight: '600', color: '#06b6d4' },
+  markAllText: { fontSize: 13, fontWeight: '600', color: colors.primary },
 
   // Notification card
   notifCard: {
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
     borderRadius: 14, padding: 14,
     flexDirection: 'row', alignItems: 'flex-start',
     shadowColor: '#0f172a',
@@ -551,13 +617,13 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   notifCardUnread: {
-    backgroundColor: '#f0fdfa',
-    borderWidth: 1, borderColor: '#e0f2fe',
+    backgroundColor: colors.primaryLight,
+    borderWidth: 1, borderColor: colors.primaryBorder,
   },
   unreadDot: {
     position: 'absolute', top: 14, right: 14,
     width: 8, height: 8, borderRadius: 4,
-    backgroundColor: '#06b6d4',
+    backgroundColor: colors.primary,
   },
   notifIcon: {
     width: 44, height: 44, borderRadius: 12,
@@ -565,10 +631,10 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   notifContent: { flex: 1 },
-  notifTitle: { fontSize: 14, fontWeight: '600', color: '#64748b', marginBottom: 3 },
-  notifTitleUnread: { color: '#0f172a', fontWeight: '700' },
-  notifMessage: { fontSize: 13, color: '#64748b', lineHeight: 18, marginBottom: 6 },
-  inviteMetaText: { fontSize: 12, color: '#94a3b8', fontWeight: '600', marginBottom: 6 },
+  notifTitle: { fontSize: 14, fontWeight: '600', color: colors.textSecondary, marginBottom: 3 },
+  notifTitleUnread: { color: colors.text, fontWeight: '700' },
+  notifMessage: { fontSize: 13, color: colors.textSecondary, lineHeight: 18, marginBottom: 6 },
+  inviteMetaText: { fontSize: 12, color: colors.textMuted, fontWeight: '600', marginBottom: 6 },
   inviteStatusText: { fontSize: 12, color: '#16a34a', fontWeight: '700', marginBottom: 6 },
   inviteActionsRow: {
     flexDirection: 'row',
@@ -584,16 +650,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   declineButton: {
-    backgroundColor: '#fee2e2',
+    backgroundColor: colors.errorLight,
     borderWidth: 1,
-    borderColor: '#fecaca',
+    borderColor: colors.isDark ? 'rgba(239,68,68,0.3)' : '#fecaca',
   },
   acceptButton: {
-    backgroundColor: '#06b6d4',
+    backgroundColor: colors.primary,
   },
-  declineButtonText: { fontSize: 13, fontWeight: '700', color: '#ef4444' },
+  declineButtonText: { fontSize: 13, fontWeight: '700', color: colors.error },
   acceptButtonText: { fontSize: 13, fontWeight: '700', color: '#ffffff' },
-  notifTime: { fontSize: 11, color: '#94a3b8', fontWeight: '500' },
+  notifTime: { fontSize: 11, color: colors.textMuted, fontWeight: '500' },
 
   // Empty state
   emptyContainer: {
@@ -607,31 +673,31 @@ const styles = StyleSheet.create({
   },
   emptyIconInner: {
     width: 80, height: 80, borderRadius: 40,
-    backgroundColor: '#f0fdfa',
+    backgroundColor: colors.primaryLight,
     alignItems: 'center', justifyContent: 'center',
-    borderWidth: 2, borderColor: '#e0f2fe',
+    borderWidth: 2, borderColor: colors.primaryBorder,
     zIndex: 1,
   },
   ring: {
     position: 'absolute',
     borderRadius: 999,
     borderWidth: 1.5,
-    borderColor: '#06b6d420',
+    borderColor: colors.primaryBorder,
   },
   ring1: { width: 100, height: 100 },
   ring2: { width: 120, height: 120 },
   emptyTitle: {
-    fontSize: 22, fontWeight: '800', color: '#0f172a',
+    fontSize: 22, fontWeight: '800', color: colors.text,
     marginBottom: 10, letterSpacing: -0.3,
   },
   emptySubtitle: {
-    fontSize: 14, color: '#64748b', textAlign: 'center',
+    fontSize: 14, color: colors.textSecondary, textAlign: 'center',
     lineHeight: 22, marginBottom: 32,
   },
   emptyFeatures: { width: '100%', gap: 12 },
   emptyFeatureItem: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
     borderRadius: 12, padding: 14,
     shadowColor: '#0f172a',
     shadowOffset: { width: 0, height: 1 },
@@ -639,10 +705,10 @@ const styles = StyleSheet.create({
   },
   emptyFeatureIcon: {
     width: 36, height: 36, borderRadius: 10,
-    backgroundColor: '#f0fdfa',
+    backgroundColor: colors.primaryLight,
     alignItems: 'center', justifyContent: 'center',
   },
-  emptyFeatureText: { fontSize: 14, fontWeight: '600', color: '#475569' },
+  emptyFeatureText: { fontSize: 14, fontWeight: '600', color: colors.labelText },
 });
 
 export default NotificationsScreen;

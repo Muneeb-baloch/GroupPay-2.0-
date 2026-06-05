@@ -1,6 +1,7 @@
 import 'react-native-gesture-handler';
 import React, { useState, useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
+import { Modal } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
@@ -11,13 +12,13 @@ import SplashScreen from './src/screens/SplashScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import NotificationsScreen from './src/screens/NotificationsScreen';
 import { AuthContext } from './src/context/AuthContext';
+import { ThemeProvider, useTheme } from './src/context/ThemeContext';
 import { appStyles } from './src/styles/appStyles';
 
 const Stack = createStackNavigator();
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
   const [showSplash, setShowSplash] = useState(true);
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(null);
@@ -76,35 +77,49 @@ export default function App() {
   };
 
   const handleSplashFinish = () => {
-    setIsLoading(false);
-    setTimeout(() => setShowSplash(false), 50);
+    setShowSplash(false);
   };
 
   return (
     <AuthContext.Provider value={{ isAuthenticated, user, token, login, logout, updateUser }}>
-      <SafeAreaProvider>
-        <SafeAreaView style={appStyles.container} edges={['top']}>
-          <StatusBar style="dark" backgroundColor="#f8fffe" />
-
-          {!isLoading && (
-            <NavigationContainer>
-              <Stack.Navigator screenOptions={{ headerShown: false }}>
-                {isAuthenticated ? (
-                  <>
-                    <Stack.Screen name="MainApp" component={BottomTabNavigator} />
-                    <Stack.Screen name="Profile" component={ProfileScreen} />
-                    <Stack.Screen name="Notifications" component={NotificationsScreen} />
-                  </>
-                ) : (
-                  <Stack.Screen name="Auth" component={AuthNavigator} />
-                )}
-              </Stack.Navigator>
-            </NavigationContainer>
-          )}
-
-          {showSplash && <SplashScreen onFinish={handleSplashFinish} />}
-        </SafeAreaView>
-      </SafeAreaProvider>
+      <ThemeProvider>
+        <AppShell
+          isAuthenticated={isAuthenticated}
+          showSplash={showSplash}
+          handleSplashFinish={handleSplashFinish}
+        />
+      </ThemeProvider>
     </AuthContext.Provider>
+  );
+}
+
+function AppShell({ isAuthenticated, showSplash, handleSplashFinish }) {
+  const { colors } = useTheme();
+  return (
+      <SafeAreaProvider>
+        <SafeAreaView style={[appStyles.container, { backgroundColor: colors.background }]} edges={['top']}>
+          <StatusBar style={colors.isDark ? 'light' : 'dark'} backgroundColor={colors.background} />
+
+          {/* NavigationContainer always pre-rendered so it's ready when splash disappears */}
+          <NavigationContainer>
+            <Stack.Navigator screenOptions={{ headerShown: false }}>
+              {isAuthenticated ? (
+                <>
+                  <Stack.Screen name="MainApp" component={BottomTabNavigator} />
+                  <Stack.Screen name="Profile" component={ProfileScreen} />
+                  <Stack.Screen name="Notifications" component={NotificationsScreen} />
+                </>
+              ) : (
+                <Stack.Screen name="Auth" component={AuthNavigator} />
+              )}
+            </Stack.Navigator>
+          </NavigationContainer>
+        </SafeAreaView>
+
+        {/* Modal renders above native components (e.g. iOS bottom tab bar) */}
+        <Modal visible={showSplash} transparent={false} animationType="none" statusBarTranslucent={true}>
+          <SplashScreen onFinish={handleSplashFinish} />
+        </Modal>
+      </SafeAreaProvider>
   );
 }

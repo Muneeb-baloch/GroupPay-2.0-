@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -17,11 +17,14 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
 import { authService } from '../services/authService';
-import { authStyles } from '../styles/authStyles';
+import { getAuthStyles } from '../styles/authStyles';
+import { useTheme } from '../context/ThemeContext';
 
 const LoginScreen = () => {
   const navigation = useNavigation();
   const { login } = useAuth();
+  const { colors, isDark } = useTheme();
+  const authStyles = useMemo(() => getAuthStyles(colors), [colors]);
   const [formData, setFormData] = useState({
     username: '',
     password: ''
@@ -144,7 +147,7 @@ const LoginScreen = () => {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <LinearGradient
-        colors={['#f8fffe', '#ecfeff', '#cffafe']}
+        colors={isDark ? [colors.background, colors.surface, colors.background] : ['#f8fffe', '#ecfeff', '#cffafe']}
         style={authStyles.gradient}
       >
         <ScrollView 

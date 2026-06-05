@@ -1,23 +1,10 @@
-import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  SafeAreaView,
-  StatusBar,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  Keyboard,
-  TouchableWithoutFeedback,
-  Image
-} from 'react-native';
+import React, { useState, useEffect, useMemo } from 'react';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, StatusBar, Alert, KeyboardAvoidingView, Platform, ScrollView, Keyboard, TouchableWithoutFeedback, Image, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 import { depositsService } from '../services/depositsService';
 import { filesService } from '../services/filesService';
 import { usersService } from '../services/usersService';
@@ -27,6 +14,8 @@ import { Modal, FlatList } from 'react-native';
 const CreateDepositScreen = ({ navigation, route }) => {
   const { groupName = 'Chichory', groupData } = route?.params || {};
   const { token, user } = useAuth();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => getStyles(colors), [colors]);
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
   const [selectedMethod, setSelectedMethod] = useState('bank_transfer');
@@ -35,33 +24,39 @@ const CreateDepositScreen = ({ navigation, route }) => {
   const [receiptImage, setReceiptImage] = useState(null);
   const [members, setMembers] = useState([]);
   const [membersLoading, setMembersLoading] = useState(false);
+  const [membersError, setMembersError] = useState(null);
   const [memberPickerVisible, setMemberPickerVisible] = useState(false);
   const [selectedReceiverId, setSelectedReceiverId] = useState(null);
   const [selectedReceiverEmail, setSelectedReceiverEmail] = useState(null);
 
-  const depositTypes = [
-    { 
-      key: 'deposit', 
-      label: 'Deposit', 
-      icon: 'add-circle', 
+  const allDepositTypes = [
+    {
+      key: 'deposit',
+      label: 'Deposit',
+      icon: 'add-circle',
       color: '#10b981',
-      description: 'Add money to group fund'
+      description: 'Send money to admin to top up your balance',
+      adminOnly: false,
     },
-    { 
-      key: 'withdrawal', 
-      label: 'Withdrawal', 
-      icon: 'remove-circle', 
+    {
+      key: 'withdrawal',
+      label: 'Withdrawal',
+      icon: 'remove-circle',
       color: '#ef4444',
-      description: 'Take money from group fund'
+      description: 'Distribute money back to a member',
+      adminOnly: true,
     },
-    { 
-      key: 'request', 
-      label: 'Request', 
-      icon: 'mail', 
+    {
+      key: 'request',
+      label: 'Request',
+      icon: 'mail',
       color: '#f59e0b',
-      description: 'Request money from members'
-    }
+      description: 'Request a payment from a member',
+      adminOnly: true,
+    },
   ];
+  // Members can only deposit; admin has all types
+  const depositTypes = isAdmin ? allDepositTypes : allDepositTypes.filter(t => !t.adminOnly);
 
   const paymentMethods = [
     { 
@@ -154,8 +149,12 @@ const CreateDepositScreen = ({ navigation, route }) => {
   const resolveReceiverId = () => {
     if (selectedReceiverId) return selectedReceiverId;
     if (route?.params?.receiverId) return route.params.receiverId;
-    return user?.person_id || user?.id || user?.user_id || null;
+    // Never fall back to self — no explicit receiver means unresolved
+    return null;
   };
+
+  // groupData.role is set by groupsService.fetchGroups — default to 'member' (safe)
+  const isAdmin = (groupData?.role || 'member') === 'admin';
 
   // Fetch group members for member picker
   useEffect(() => {
@@ -163,22 +162,69 @@ const CreateDepositScreen = ({ navigation, route }) => {
     if (!token || !groupId) return;
     let mounted = true;
     setMembersLoading(true);
-    groupsService.getGroup(token, groupId)
+    setMembersError(null);
+    const myId = String(user?.person_id || user?.id || '');
+    groupsService.getGroupMembers(token, groupId)
       .then((data) => {
         if (!mounted) return;
-        const raw = data?.data || data;
-        const participants = raw?.participants || raw?.members || [];
-        const list = participants.map(p => ({
-          id: p.person_id || p.id,
-          name: p.person?.fullname || p.person?.username || p.name || 'Unknown',
-          email: p.person?.email || p.email || '',
-        }));
-        setMembers(list);
+        // /groups/{id}/members returns "List of active members with roles"
+        const raw =
+          data?.data?.members ||
+          data?.data?.participants ||
+          (Array.isArray(data?.data) ? data.data : null) ||
+          data?.members ||
+          data?.participants ||
+          data?.rows ||
+          (Array.isArray(data) ? data : []);
+
+        if (__DEV__) console.log('[CreateDeposit] members count:', (raw || []).length);
+
+        const list = (raw || []).map(p => {
+          const personId = String(p.person_id || p.person?.id || p.id || '');
+          const roleStr = (p.role || p.participant_role || p.user_role || '').toString().toLowerCase();
+          const isParticipantAdmin =
+            p.is_admin === true  ||
+            p.is_admin === 1     ||
+            p.is_owner === true  ||
+            roleStr === 'admin'  ||
+            roleStr === 'owner';
+          return {
+            id: p.person_id || p.person?.id || p.id,
+            name: p.person?.fullname || p.person?.username || p.fullname || p.name || 'Unknown',
+            email: p.person?.email || p.email || '',
+            is_admin: isParticipantAdmin,
+          };
+        });
+
+        // Members send to admin only; admins send to any other member (exclude self)
+        let filtered = isAdmin
+          ? list.filter(m => String(m.id) !== myId)
+          : list.filter(m => m.is_admin);
+
+        setMembers(filtered);
+        if (filtered.length === 0) {
+          setMembersError(
+            isAdmin
+              ? 'No other members found in this group.'
+              : 'Could not find group admin. Make sure you are in an active group.'
+          );
+        }
+
+        // Non-admin members: auto-select the admin as receiver
+        if (!isAdmin && filtered.length > 0 && !selectedReceiverId) {
+          const admin = filtered[0];
+          setSelectedReceiverId(admin.id);
+          setSelectedReceiverEmail(admin.name || admin.email);
+        }
       })
-      .catch(err => console.log('Fetch members failed', err.message))
-      .finally(() => setMembersLoading(false));
+      .catch(err => {
+        if (!mounted) return;
+        console.warn('[CreateDeposit] getGroupMembers error:', err?.message);
+        setMembersError('Could not load group members: ' + (err?.message || 'Unknown error'));
+      })
+      .finally(() => { if (mounted) setMembersLoading(false); });
     return () => { mounted = false; };
-  }, [token, route?.params?.groupId, groupData]);
+  }, [token, route?.params?.groupId, groupData?.id, isAdmin]);
 
   const normalizeDepositResponse = (payload) => payload?.data?.deposit || payload?.data || payload?.deposit || payload;
 
@@ -221,7 +267,7 @@ const CreateDepositScreen = ({ navigation, route }) => {
         }
       } catch (err) {
         // ignore and let the missing receiverId error show below
-        console.log('User lookup failed', err.message);
+        console.warn('User lookup failed', err.message);
       }
     }
     if (!receiverId) {
@@ -270,16 +316,16 @@ const CreateDepositScreen = ({ navigation, route }) => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#f8fffe" />
-      
+    <SafeAreaView style={styles.container} edges={['bottom']}>
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
+
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity 
           style={styles.backButton}
           onPress={() => navigation.goBack()}
         >
-          <Ionicons name="arrow-back" size={24} color="#0f172a" />
+          <Ionicons name="arrow-back" size={24} color={colors.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>New Deposit</Text>
         <View style={styles.headerSpacer} />
@@ -302,7 +348,7 @@ const CreateDepositScreen = ({ navigation, route }) => {
             {/* Group Info */}
             <View style={styles.groupInfo}>
               <View style={styles.groupHeader}>
-                <View style={[styles.groupIndicator, { backgroundColor: groupData?.color || '#06b6d4' }]} />
+                <View style={[styles.groupIndicator, { backgroundColor: groupData?.color || colors.primary }]} />
                 <Text style={styles.groupName}>{groupName}</Text>
               </View>
               <Text style={styles.groupSubtitle}>Managing group deposits</Text>
@@ -355,7 +401,7 @@ const CreateDepositScreen = ({ navigation, route }) => {
                 <TextInput
                   style={styles.amountInput}
                   placeholder="0.00"
-                  placeholderTextColor="#9ca3af"
+                  placeholderTextColor={colors.textMuted}
                   value={amount}
                   onChangeText={setAmount}
                   keyboardType="decimal-pad"
@@ -395,7 +441,7 @@ const CreateDepositScreen = ({ navigation, route }) => {
                         <Ionicons 
                           name={method.icon} 
                           size={24} 
-                          color={selectedMethod === method.key ? '#06b6d4' : '#64748b'} 
+                          color={selectedMethod === method.key ? colors.primary : colors.textSecondary}
                         />
                       </View>
                       <View style={styles.methodInfo}>
@@ -415,7 +461,7 @@ const CreateDepositScreen = ({ navigation, route }) => {
                       </View>
                       {selectedMethod === method.key && (
                         <View style={styles.selectedMethodIndicator}>
-                          <Ionicons name="checkmark-circle" size={20} color="#06b6d4" />
+                          <Ionicons name="checkmark-circle" size={20} color={colors.primary} />
                         </View>
                       )}
                     </View>
@@ -438,12 +484,12 @@ const CreateDepositScreen = ({ navigation, route }) => {
                   >
                     <View style={styles.uploadContent}>
                       <View style={styles.uploadIcon}>
-                        <Ionicons name="cloud-upload" size={32} color="#06b6d4" />
+                        <Ionicons name="cloud-upload" size={32} color={colors.primary} />
                       </View>
                       <Text style={styles.uploadTitle}>Upload Receipt</Text>
                       <Text style={styles.uploadSubtitle}>Tap to take photo or choose from gallery</Text>
                       <View style={styles.uploadButton}>
-                        <Ionicons name="camera" size={16} color="#06b6d4" />
+                        <Ionicons name="camera" size={16} color={colors.primary} />
                         <Text style={styles.uploadButtonText}>Add Photo</Text>
                       </View>
                     </View>
@@ -457,7 +503,7 @@ const CreateDepositScreen = ({ navigation, route }) => {
                         onPress={showImagePicker}
                         activeOpacity={0.7}
                       >
-                        <Ionicons name="camera" size={16} color="#06b6d4" />
+                        <Ionicons name="camera" size={16} color={colors.primary} />
                         <Text style={styles.changeImageText}>Change</Text>
                       </TouchableOpacity>
                       <TouchableOpacity 
@@ -476,21 +522,45 @@ const CreateDepositScreen = ({ navigation, route }) => {
 
             {/* Receiver Selector */}
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Receiver</Text>
-              <Text style={styles.sectionSubtitle}>Choose a group member to receive this transaction (optional)</Text>
-              <TouchableOpacity
-                style={[styles.amountContainer, { paddingVertical: 12, paddingHorizontal: 16 }]}
-                onPress={() => setMemberPickerVisible(true)}
-                activeOpacity={0.8}
-              >
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 16, fontWeight: '600', color: '#0f172a' }}>
-                    {selectedReceiverEmail || 'Select a member...'}
-                  </Text>
-                </View>
-                <Ionicons name="chevron-down" size={20} color="#64748b" />
-              </TouchableOpacity>
+              <Text style={styles.sectionTitle}>{isAdmin ? 'Send To Member' : 'Depositing To'}</Text>
+              <Text style={styles.sectionSubtitle}>
+                {isAdmin ? 'Select the group member receiving this deposit' : 'Deposits go directly to the group admin'}
+              </Text>
 
+              {!isAdmin ? (
+                /* Non-admin: locked to admin, just show who it's going to */
+                <View style={[styles.amountContainer, { paddingVertical: 14, paddingHorizontal: 16 }]}>
+                  <Ionicons name="person" size={18} color={colors.primary} style={{ marginRight: 10 }} />
+                  <View style={{ flex: 1 }}>
+                    {membersLoading ? (
+                      <Text style={{ fontSize: 15, color: colors.textMuted }}>Finding group admin...</Text>
+                    ) : selectedReceiverEmail ? (
+                      <>
+                        <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>{selectedReceiverEmail}</Text>
+                        <Text style={{ fontSize: 12, color: colors.textMuted, marginTop: 2 }}>Group Admin</Text>
+                      </>
+                    ) : (
+                      <Text style={{ fontSize: 15, color: colors.error }}>Admin not found — reload or check group</Text>
+                    )}
+                  </View>
+                  <Ionicons name="lock-closed" size={16} color={colors.textMuted} />
+                </View>
+              ) : (
+                /* Admin: full member picker */
+                <TouchableOpacity
+                  style={[styles.amountContainer, { paddingVertical: 12, paddingHorizontal: 16 }]}
+                  onPress={() => setMemberPickerVisible(true)}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="people" size={18} color={colors.primary} style={{ marginRight: 10 }} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 16, fontWeight: '600', color: selectedReceiverEmail ? colors.text : colors.textMuted }}>
+                      {selectedReceiverEmail || 'Select a member...'}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-down" size={20} color={colors.textSecondary} />
+                </TouchableOpacity>
+              )}
             </View>
 
             {/* Note Input */}
@@ -500,7 +570,7 @@ const CreateDepositScreen = ({ navigation, route }) => {
                 <TextInput
                   style={styles.noteInput}
                   placeholder="Add a note or description..."
-                  placeholderTextColor="#9ca3af"
+                  placeholderTextColor={colors.textMuted}
                   value={note}
                   onChangeText={setNote}
                   maxLength={100}
@@ -575,32 +645,64 @@ const CreateDepositScreen = ({ navigation, route }) => {
             <Modal
               visible={memberPickerVisible}
               animationType="slide"
+              transparent={true}
               onRequestClose={() => setMemberPickerVisible(false)}
             >
-              <SafeAreaView style={{ flex: 1, backgroundColor: '#f8fffe' }}>
-                <View style={{ padding: 16, borderBottomWidth: 1, borderBottomColor: '#e2e8f0', backgroundColor: '#ffffff' }}>
-                  <Text style={{ fontSize: 18, fontWeight: '700', textAlign: 'center' }}>Select Member</Text>
-                </View>
-                <FlatList
-                  data={members}
-                  keyExtractor={(item) => String(item.id)}
-                  renderItem={({ item }) => (
-                    <TouchableOpacity
-                      style={{ padding: 16, borderBottomWidth: 1, borderBottomColor: '#f1f5f9', backgroundColor: '#ffffff' }}
-                      onPress={() => {
-                        setSelectedReceiverId(item.id);
-                        setSelectedReceiverEmail(item.email);
-                        setMemberPickerVisible(false);
-                      }}
-                    >
-                      <Text style={{ fontSize: 16, fontWeight: '600' }}>{item.name}</Text>
-                      <Text style={{ fontSize: 13, color: '#64748b', marginTop: 4 }}>{item.email}</Text>
+              <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' }}>
+                <View style={{ backgroundColor: colors.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '70%' }}>
+                  {/* Handle bar */}
+                  <View style={{ alignItems: 'center', paddingTop: 12, paddingBottom: 4 }}>
+                    <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: colors.surfaceAlt }} />
+                  </View>
+                  {/* Header */}
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.cardBorder }}>
+                    <Text style={{ fontSize: 18, fontWeight: '700', color: colors.text }}>Select Receiver</Text>
+                    <TouchableOpacity onPress={() => setMemberPickerVisible(false)} style={{ padding: 4 }}>
+                      <Ionicons name="close" size={24} color={colors.textSecondary} />
                     </TouchableOpacity>
+                  </View>
+                  {/* Content */}
+                  {membersLoading ? (
+                    <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                      <ActivityIndicator size="large" color={colors.primary} />
+                      <Text style={{ marginTop: 12, color: colors.textSecondary, fontSize: 14 }}>Loading members...</Text>
+                    </View>
+                  ) : members.length === 0 ? (
+                    <View style={{ alignItems: 'center', paddingVertical: 40, paddingHorizontal: 20 }}>
+                      <Ionicons name="people-outline" size={40} color={colors.textMuted} />
+                      <Text style={{ marginTop: 12, color: colors.textSecondary, fontSize: 14, textAlign: 'center' }}>
+                        {membersError || 'No members found'}
+                      </Text>
+                    </View>
+                  ) : (
+                    <FlatList
+                      data={members}
+                      keyExtractor={(item) => String(item.id)}
+                      renderItem={({ item }) => (
+                        <TouchableOpacity
+                          style={{ flexDirection: 'row', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: colors.cardBorder, backgroundColor: selectedReceiverId === item.id ? colors.primaryLight : colors.card }}
+                          onPress={() => {
+                            setSelectedReceiverId(item.id);
+                            setSelectedReceiverEmail(item.name);
+                            setMemberPickerVisible(false);
+                          }}
+                          activeOpacity={0.7}
+                        >
+                          <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: colors.primaryLight, alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+                            <Text style={{ fontSize: 16, fontWeight: '700', color: colors.primary }}>{(item.name || '?')[0].toUpperCase()}</Text>
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={{ fontSize: 15, fontWeight: '600', color: colors.text }}>{item.name}</Text>
+                            {item.email ? <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 2 }}>{item.email}</Text> : null}
+                          </View>
+                          {selectedReceiverId === item.id && <Ionicons name="checkmark-circle" size={20} color={colors.primary} />}
+                        </TouchableOpacity>
+                      )}
+                      contentContainerStyle={{ paddingBottom: 32 }}
+                    />
                   )}
-                  ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
-                  contentContainerStyle={{ padding: 8 }}
-                />
-              </SafeAreaView>
+                </View>
+              </View>
             </Modal>
 
             {/* Extra spacing for keyboard */}
@@ -612,10 +714,10 @@ const CreateDepositScreen = ({ navigation, route }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (colors) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8fffe',
+    backgroundColor: colors.background,
   },
   
   // Keyboard Avoiding View
@@ -629,9 +731,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 20,
     paddingVertical: 12,
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
     borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
+    borderBottomColor: colors.cardBorder,
   },
   backButton: {
     padding: 4,
@@ -640,7 +742,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 18,
     fontWeight: '700',
-    color: '#0f172a',
+    color: colors.text,
     textAlign: 'center',
     marginHorizontal: 16,
   },
@@ -664,12 +766,12 @@ const styles = StyleSheet.create({
 
   // Group Info
   groupInfo: {
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
     borderRadius: 12,
     padding: 16,
     marginBottom: 20,
     borderWidth: 1,
-    borderColor: '#e0f2fe',
+    borderColor: colors.primaryBorder,
   },
   groupHeader: {
     flexDirection: 'row',
@@ -685,11 +787,11 @@ const styles = StyleSheet.create({
   groupName: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#0f172a',
+    color: colors.text,
   },
   groupSubtitle: {
     fontSize: 13,
-    color: '#64748b',
+    color: colors.textSecondary,
     fontWeight: '500',
   },
 
@@ -700,12 +802,12 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#0f172a',
+    color: colors.text,
     marginBottom: 4,
   },
   sectionSubtitle: {
     fontSize: 13,
-    color: '#64748b',
+    color: colors.textSecondary,
     marginBottom: 12,
     fontWeight: '500',
   },
@@ -715,11 +817,11 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   typeCard: {
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
     borderRadius: 12,
     padding: 16,
     borderWidth: 2,
-    borderColor: '#e2e8f0',
+    borderColor: colors.inputBorder,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
@@ -728,7 +830,7 @@ const styles = StyleSheet.create({
   },
   selectedTypeCard: {
     borderWidth: 2,
-    shadowColor: '#06b6d4',
+    shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.15,
     shadowRadius: 8,
@@ -752,12 +854,12 @@ const styles = StyleSheet.create({
   typeLabel: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#0f172a',
+    color: colors.text,
     marginBottom: 2,
   },
   typeDescription: {
     fontSize: 13,
-    color: '#64748b',
+    color: colors.textSecondary,
     fontWeight: '500',
   },
   selectedIndicator: {
@@ -772,24 +874,24 @@ const styles = StyleSheet.create({
   amountContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
     borderRadius: 12,
     borderWidth: 2,
-    borderColor: '#e2e8f0',
+    borderColor: colors.inputBorder,
     paddingHorizontal: 16,
     paddingVertical: 4,
   },
   currencySymbol: {
     fontSize: 24,
     fontWeight: '700',
-    color: '#06b6d4',
+    color: colors.primary,
     marginRight: 8,
   },
   amountInput: {
     flex: 1,
     fontSize: 24,
     fontWeight: '700',
-    color: '#0f172a',
+    color: colors.text,
     paddingVertical: 12,
     minHeight: 48,
   },
@@ -799,11 +901,11 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   methodCard: {
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
     borderRadius: 12,
     padding: 16,
     borderWidth: 2,
-    borderColor: '#e2e8f0',
+    borderColor: colors.inputBorder,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
@@ -812,8 +914,8 @@ const styles = StyleSheet.create({
   },
   selectedMethodCard: {
     borderColor: '#06b6d4',
-    backgroundColor: '#f0f9ff',
-    shadowColor: '#06b6d4',
+    backgroundColor: colors.primaryLight,
+    shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.15,
     shadowRadius: 8,
@@ -829,11 +931,11 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#f8fafc',
+    backgroundColor: colors.surfaceAlt,
     marginRight: 16,
   },
   selectedMethodIcon: {
-    backgroundColor: '#e0f2fe',
+    backgroundColor: colors.primaryLight,
   },
   methodInfo: {
     flex: 1,
@@ -841,16 +943,16 @@ const styles = StyleSheet.create({
   methodLabel: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#0f172a',
+    color: colors.text,
     marginBottom: 2,
   },
   selectedMethodLabel: {
-    color: '#06b6d4',
+    color: colors.primary,
     fontWeight: '700',
   },
   methodDescription: {
     fontSize: 13,
-    color: '#64748b',
+    color: colors.textSecondary,
     fontWeight: '500',
     marginBottom: 4,
   },
@@ -870,10 +972,10 @@ const styles = StyleSheet.create({
 
   // Receipt Upload Styles
   uploadArea: {
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
     borderRadius: 12,
     borderWidth: 2,
-    borderColor: '#e0f2fe',
+    borderColor: colors.primaryBorder,
     borderStyle: 'dashed',
     padding: 24,
     alignItems: 'center',
@@ -887,7 +989,7 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: '#f0f9ff',
+    backgroundColor: colors.primaryLight,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 16,
@@ -895,12 +997,12 @@ const styles = StyleSheet.create({
   uploadTitle: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#0f172a',
+    color: colors.text,
     marginBottom: 4,
   },
   uploadSubtitle: {
     fontSize: 13,
-    color: '#64748b',
+    color: colors.textSecondary,
     textAlign: 'center',
     marginBottom: 16,
     fontWeight: '500',
@@ -908,7 +1010,7 @@ const styles = StyleSheet.create({
   uploadButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f0f9ff',
+    backgroundColor: colors.primaryLight,
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 8,
@@ -917,15 +1019,15 @@ const styles = StyleSheet.create({
   uploadButtonText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#06b6d4',
+    color: colors.primary,
   },
 
   // Image Preview Styles
   imagePreview: {
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#e2e8f0',
+    borderColor: colors.inputBorder,
     overflow: 'hidden',
   },
   previewImage: {
@@ -943,7 +1045,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#f0f9ff',
+    backgroundColor: colors.primaryLight,
     paddingVertical: 10,
     borderRadius: 8,
     gap: 6,
@@ -951,14 +1053,14 @@ const styles = StyleSheet.create({
   changeImageText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#06b6d4',
+    color: colors.primary,
   },
   removeImageButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#fef2f2',
+    backgroundColor: colors.errorLight,
     paddingVertical: 10,
     borderRadius: 8,
     gap: 6,
@@ -971,16 +1073,16 @@ const styles = StyleSheet.create({
 
   // Note Input
   noteContainer: {
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
     borderRadius: 12,
     borderWidth: 2,
-    borderColor: '#e2e8f0',
+    borderColor: colors.inputBorder,
     paddingHorizontal: 16,
     paddingVertical: 4,
   },
   noteInput: {
     fontSize: 16,
-    color: '#0f172a',
+    color: colors.text,
     fontWeight: '500',
     paddingVertical: 12,
     minHeight: 80,
@@ -988,18 +1090,18 @@ const styles = StyleSheet.create({
   },
   characterCount: {
     fontSize: 12,
-    color: '#9ca3af',
+    color: colors.textMuted,
     marginTop: 6,
     textAlign: 'right',
   },
 
   // Preview Card
   previewCard: {
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
     borderRadius: 12,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#e2e8f0',
+    borderColor: colors.inputBorder,
   },
   previewHeader: {
     flexDirection: 'row',
@@ -1019,12 +1121,12 @@ const styles = StyleSheet.create({
   previewTitle: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#0f172a',
+    color: colors.text,
     marginBottom: 2,
   },
   previewMethod: {
     fontSize: 12,
-    color: '#64748b',
+    color: colors.textSecondary,
     fontWeight: '500',
   },
   previewAmount: {
@@ -1038,11 +1140,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#06b6d4',
+    backgroundColor: colors.primary,
     paddingVertical: 16,
     borderRadius: 12,
     gap: 8,
-    shadowColor: '#06b6d4',
+    shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
     shadowRadius: 8,

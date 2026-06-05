@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -19,6 +19,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { groupsService } from '../services/groupsService';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 import { createUniqueId } from '../utils/helpers';
 
 const COLOR_OPTIONS = [
@@ -29,6 +30,8 @@ const COLOR_OPTIONS = [
 
 const CreateGroupScreen = ({ navigation }) => {
   const { token } = useAuth();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => getStyles(colors), [colors]);
   const [groupName, setGroupName] = useState('');
   const [selectedColor, setSelectedColor] = useState('#06b6d4');
   const [loading, setLoading] = useState(false);
@@ -103,12 +106,12 @@ const CreateGroupScreen = ({ navigation }) => {
 
   return (
     <SafeAreaView style={styles.container} edges={["bottom"]}>
-      <StatusBar barStyle="dark-content" backgroundColor="#f8fffe" />
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.background} />
 
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()} activeOpacity={0.7}>
-          <Ionicons name="arrow-back" size={22} color="#0f172a" />
+          <Ionicons name="arrow-back" size={22} color={colors.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>New Group</Text>
         <View style={{ width: 36 }} />
@@ -124,7 +127,7 @@ const CreateGroupScreen = ({ navigation }) => {
             {/* Avatar Preview */}
             <View style={styles.avatarSection}>
               <View style={[styles.avatarRing, { borderColor: 'rgba(6,182,212,0.18)' }]}>
-                <View style={[styles.avatar, { backgroundColor: '#06b6d4' }]}>
+                <View style={[styles.avatar, { backgroundColor: selectedColor || colors.primary }]}>
                   {initials ? (
                     <Text style={styles.avatarText}>{initials}</Text>
                   ) : (
@@ -141,17 +144,17 @@ const CreateGroupScreen = ({ navigation }) => {
             {/* Name Input Card */}
             <View style={styles.card}>
               <Text style={styles.cardLabel}>GROUP NAME</Text>
-              <View style={[styles.inputWrapper, focused && { borderColor: '#06b6d4', backgroundColor: '#ffffff' }]}>
+              <View style={[styles.inputWrapper, focused && { borderColor: colors.primary, backgroundColor: colors.card }]}>
                 <Ionicons
                   name="people-outline"
                   size={18}
-                  color={focused ? '#06b6d4' : '#94a3b8'}
+                  color={focused ? colors.primary : colors.textMuted}
                   style={{ marginRight: 10 }}
                 />
                 <TextInput
                   style={styles.input}
                   placeholder="e.g. Weekend Trip, Office Lunch..."
-                  placeholderTextColor="#9ca3af"
+                  placeholderTextColor={colors.textMuted}
                   value={groupName}
                   onChangeText={setGroupName}
                   onFocus={() => setFocused(true)}
@@ -163,7 +166,7 @@ const CreateGroupScreen = ({ navigation }) => {
                 />
                 {groupName.length > 0 && (
                   <TouchableOpacity onPress={() => setGroupName('')} activeOpacity={0.7}>
-                    <Ionicons name="close-circle" size={18} color="#94a3b8" />
+                    <Ionicons name="close-circle" size={18} color={colors.textMuted} />
                   </TouchableOpacity>
                 )}
               </View>
@@ -178,7 +181,7 @@ const CreateGroupScreen = ({ navigation }) => {
 
             {/* Create Button — inside scroll, above nav bar */}
             <TouchableOpacity
-              style={[styles.createButton, { backgroundColor: isValid ? '#06b6d4' : '#cbd5e1' }]}
+              style={[styles.createButton, { backgroundColor: isValid ? colors.primary : colors.inputBorder }]}
               onPress={handleCreateGroup}
               disabled={!isValid || loading}
               activeOpacity={0.8}
@@ -205,10 +208,10 @@ const CreateGroupScreen = ({ navigation }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (colors) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8fffe',
+    backgroundColor: colors.background,
   },
   header: {
     flexDirection: 'row',
@@ -216,21 +219,21 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 20,
     paddingVertical: 8,
-    backgroundColor: '#f8fffe',
+    backgroundColor: colors.background,
     borderBottomWidth: 0,
   },
   backButton: {
     width: 36,
     height: 36,
     borderRadius: 10,
-    backgroundColor: '#f1f5f9',
+    backgroundColor: colors.surfaceAlt,
     alignItems: 'center',
     justifyContent: 'center',
   },
   headerTitle: {
     fontSize: 17,
     fontWeight: '700',
-    color: '#0f172a',
+    color: colors.text,
   },
   scrollContent: {
     paddingHorizontal: 20,
@@ -267,20 +270,20 @@ const styles = StyleSheet.create({
   avatarName: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#0f172a',
+    color: colors.text,
     marginBottom: 2,
     maxWidth: 240,
     textAlign: 'center',
   },
   avatarSub: {
     fontSize: 12,
-    color: '#94a3b8',
+    color: colors.textMuted,
     fontWeight: '500',
   },
 
   // Card
   card: {
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
     borderRadius: 16,
     padding: 16,
     marginBottom: 14,
@@ -293,7 +296,7 @@ const styles = StyleSheet.create({
   cardLabel: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#94a3b8',
+    color: colors.textMuted,
     letterSpacing: 0.8,
     marginBottom: 12,
   },
@@ -303,21 +306,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1.5,
-    borderColor: '#e2e8f0',
+    borderColor: colors.inputBorder,
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 12,
-    backgroundColor: '#f8fafc',
+    backgroundColor: colors.inputBg,
   },
   input: {
     flex: 1,
     fontSize: 15,
-    color: '#0f172a',
+    color: colors.text,
     fontWeight: '500',
   },
   charCount: {
     fontSize: 12,
-    color: '#94a3b8',
+    color: colors.textMuted,
     textAlign: 'right',
     marginTop: 6,
     fontWeight: '500',
@@ -354,7 +357,7 @@ const styles = StyleSheet.create({
   },
   infoRowBorder: {
     borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
+    borderBottomColor: colors.cardBorder,
   },
   infoIcon: {
     width: 32,
@@ -365,7 +368,7 @@ const styles = StyleSheet.create({
   },
   infoText: {
     fontSize: 14,
-    color: '#475569',
+    color: colors.textSecondary,
     fontWeight: '500',
   },
 

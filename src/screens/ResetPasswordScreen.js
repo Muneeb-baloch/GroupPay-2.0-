@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -17,11 +17,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { authService } from '../services/authService';
-import { authStyles } from '../styles/authStyles';
+import { getAuthStyles } from '../styles/authStyles';
+import { useTheme } from '../context/ThemeContext';
 
 const ResetPasswordScreen = () => {
   const navigation = useNavigation();
   const route = useRoute();
+  const { colors, isDark } = useTheme();
+  const authStyles = useMemo(() => getAuthStyles(colors), [colors]);
   const { email } = route.params || {};
 
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
@@ -106,7 +109,7 @@ const ResetPasswordScreen = () => {
       style={authStyles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <LinearGradient colors={['#f8fffe', '#ecfeff', '#cffafe']} style={authStyles.gradient}>
+      <LinearGradient colors={isDark ? [colors.background, colors.surface, colors.background] : ['#f8fffe', '#ecfeff', '#cffafe']} style={authStyles.gradient}>
         <ScrollView
           contentContainerStyle={authStyles.scrollContainer}
           showsVerticalScrollIndicator={false}

@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef, memo } from 'react';
+import React, { useState, useCallback, useEffect, useRef, memo, useMemo } from 'react';
 import {
   View,
   Text,
@@ -20,11 +20,15 @@ import { useAuth } from '../context/AuthContext';
 import { scenesService } from '../services/scenesService';
 import { groupsService } from '../services/groupsService';
 import { getInitials } from '../utils/helpers';
+import { cache } from '../utils/cache';
+import { useTheme } from '../context/ThemeContext';
+import RecentSceneCard from '../components/home/RecentSceneCard';
 
 const { width } = Dimensions.get('window');
 
 // ─── Skeleton card shown while loading ───────────────────────────────────────
 const SkeletonCard = memo(() => {
+  const { colors } = useTheme();
   const pulse = useRef(new Animated.Value(0.4)).current;
   useEffect(() => {
     Animated.loop(
@@ -34,16 +38,17 @@ const SkeletonCard = memo(() => {
       ])
     ).start();
   }, [pulse]);
+  const sk = { backgroundColor: colors.skeleton, borderRadius: 6, height: 14 };
   return (
-    <Animated.View style={[styles.sceneCard, { opacity: pulse }]}>
-      <View style={styles.skRow}>
-        <View style={[styles.skBlock, { width: '60%', height: 18 }]} />
-        <View style={[styles.skBlock, { width: 60, height: 18 }]} />
+    <Animated.View style={[{ backgroundColor: colors.card, borderRadius: 16, padding: 20, marginBottom: 16, borderWidth: 1, borderColor: colors.cardBorder }, { opacity: pulse }]}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+        <View style={[sk, { width: '60%', height: 18 }]} />
+        <View style={[sk, { width: 60, height: 18 }]} />
       </View>
-      <View style={[styles.skBlock, { width: '40%', height: 13, marginTop: 8 }]} />
-      <View style={[styles.skBlock, { width: '90%', height: 13, marginTop: 10 }]} />
-      <View style={[styles.skBlock, { width: '70%', height: 13, marginTop: 6 }]} />
-      <View style={[styles.skBlock, { width: '50%', height: 28, marginTop: 14, borderRadius: 8 }]} />
+      <View style={[sk, { width: '40%', height: 13, marginTop: 8 }]} />
+      <View style={[sk, { width: '90%', height: 13, marginTop: 10 }]} />
+      <View style={[sk, { width: '70%', height: 13, marginTop: 6 }]} />
+      <View style={[sk, { width: '50%', height: 28, marginTop: 14, borderRadius: 8 }]} />
     </Animated.View>
   );
 });
@@ -51,6 +56,8 @@ const SkeletonCard = memo(() => {
 const ScenesScreen = ({ route }) => {
   const navigation = useNavigation();
   const { token, user } = useAuth();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => getStyles(colors), [colors]);
   const [searchText, setSearchText] = useState('');
   const [selectedFilter, setSelectedFilter] = useState('All');
   const [refreshing, setRefreshing] = useState(false);
@@ -106,6 +113,7 @@ const ScenesScreen = ({ route }) => {
 
     return {
       id: sceneId,
+      group_id: item?.group_id || item?.group?.id || null,
       title: item?.title || item?.scene_name || item?.location || `Scene #${sceneId}`,
       group: groupsById[String(item?.group_id)] || item?.group?.name || 'Group',
       description: item?.description || `Expenses at ${item?.location || 'Scene location'}`,
@@ -121,36 +129,50 @@ const ScenesScreen = ({ route }) => {
     };
   }, [getInitials, getSceneDate, toArray]);
 
-  const fetchScenes = useCallback(async () => {
+  const fetchScenes = useCallback(async (silent = false) => {
     if (!token) return;
-    setLoading(true);
-    const currentUserId = user?.person_id || user?.id || null;
+    const currentUserId = String(user?.person_id || user?.id || '');
+    const cacheKey = `scenes_${currentUserId}`;
+
+    // Load from cache immediately so user sees data right away
+    if (!silent) {
+      const cached = await cache.get(cacheKey);
+      if (cached) {
+        groupsByIdRef.current = cached.groupsById || {};
+        setAdminGroups(cached.adminGroups || []);
+        setScenes(cached.scenes || []);
+        setLoading(false);
+      } else {
+        setLoading(true);
+      }
+    }
 
     try {
-      // Fire both requests simultaneously
       const [groupsData, response] = await Promise.all([
         groupsService.fetchGroups(token, currentUserId).catch(() => null),
         scenesService.getScenes(token, { page: 1, pageSize: 200 }),
       ]);
 
-      // Build groupsById lookup
       const groupsById = ((groupsData?.all || groupsData?.your || []).reduce((acc, g) => {
         acc[String(g.id)] = g.name;
         return acc;
       }, {}));
       groupsByIdRef.current = groupsById;
-      setAdminGroups(groupsData?.your || []);
+      const adminGroupsList = groupsData?.your || [];
+      setAdminGroups(adminGroupsList);
 
       const rawScenes = toArray(response?.data || response);
       const normalized = rawScenes.map((item) =>
         normalizeScene(item, groupsById, currentUserId)
       );
       setScenes(normalized);
+
+      await cache.set(cacheKey, { groupsById, adminGroups: adminGroupsList, scenes: normalized });
     } catch (error) {
-      console.log('Fetch scenes error:', error.message);
-      Alert.alert('Error', 'Could not load scenes right now.');
+      console.warn('Fetch scenes error:', error.message);
+      if (!silent) Alert.alert('Error', 'Could not load scenes right now.');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [normalizeScene, toArray, token, user]);
 
@@ -194,12 +216,14 @@ const ScenesScreen = ({ route }) => {
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await fetchScenes();
+    await fetchScenes(true);
     setRefreshing(false);
   }, [fetchScenes]);
 
   const handleScenePress = (scene) => {
-    navigation.navigate('SceneDetail', { scene: scene });
+    const sceneGroupId = String(scene.rawGroupId || scene.group_id || scene.raw?.group_id || '');
+    const isAdmin = adminGroups.some(g => String(g.id) === sceneGroupId);
+    navigation.navigate('SceneDetail', { scene, userRole: isAdmin ? 'admin' : 'member' });
   };
 
   const handleCreateScene = async () => {
@@ -228,12 +252,17 @@ const ScenesScreen = ({ route }) => {
     );
   };
 
-  const renderRightActions = (scene) => (
-    <View style={styles.rightActionsContainer}>
-      <TouchableOpacity style={[styles.actionButton, styles.editButton]} onPress={() => handleEditScene(scene)} activeOpacity={0.8}><Ionicons name="pencil" size={20} color="#ffffff" /><Text style={styles.actionButtonText}>Edit</Text></TouchableOpacity>
-      <TouchableOpacity style={[styles.actionButton, styles.deleteButton]} onPress={() => handleDeleteScene(scene)} activeOpacity={0.8}><Ionicons name="trash" size={20} color="#ffffff" /><Text style={styles.actionButtonText}>Delete</Text></TouchableOpacity>
-    </View>
-  );
+  const renderRightActions = (scene) => {
+    const sceneGroupId = String(scene.group_id || scene.raw?.group_id || '');
+    const isAdminOfScene = adminGroups.some(g => String(g.id) === sceneGroupId);
+    if (!isAdminOfScene) return null;
+    return (
+      <View style={styles.rightActionsContainer}>
+        <TouchableOpacity style={[styles.actionButton, styles.editButton]} onPress={() => handleEditScene(scene)} activeOpacity={0.8}><Ionicons name="pencil" size={20} color="#ffffff" /><Text style={styles.actionButtonText}>Edit</Text></TouchableOpacity>
+        <TouchableOpacity style={[styles.actionButton, styles.deleteButton]} onPress={() => handleDeleteScene(scene)} activeOpacity={0.8}><Ionicons name="trash" size={20} color="#ffffff" /><Text style={styles.actionButtonText}>Delete</Text></TouchableOpacity>
+      </View>
+    );
+  };
 
   const filteredScenes = scenes.filter(scene => {
     const matchesSearch = scene.title.toLowerCase().includes(searchText.toLowerCase()) || scene.description.toLowerCase().includes(searchText.toLowerCase()) || scene.location.toLowerCase().includes(searchText.toLowerCase());
@@ -249,33 +278,7 @@ const ScenesScreen = ({ route }) => {
   const renderSceneCard = ({ item }) => (
     <GestureHandlerRootView>
       <Swipeable renderRightActions={() => renderRightActions(item)} rightThreshold={40}>
-        <TouchableOpacity style={styles.sceneCard} onPress={() => handleScenePress(item)} activeOpacity={0.7}>
-          <View style={styles.cardHeader}>
-            <View style={styles.titleSection}>
-              <Text style={styles.sceneTitle}>{item.title}</Text>
-              <View style={styles.groupBadge}><Ionicons name="people" size={12} color="#06b6d4" /><Text style={styles.groupText}>{item.group}</Text></View>
-            </View>
-            <View style={styles.amountSection}><Text style={styles.totalAmount}>Rs {item.totalBill.toLocaleString()}</Text><Text style={styles.totalLabel}>Total</Text></View>
-          </View>
-          <View style={styles.locationRow}><Ionicons name="location" size={14} color="#64748b" /><Text style={styles.locationText}>{item.location}</Text></View>
-          <Text style={styles.description}>{item.description}</Text>
-          <View style={styles.cardFooter}>
-            <View style={styles.dateTimeContainer}>
-              <View style={styles.dateTimeRow}><Ionicons name="calendar-outline" size={14} color="#64748b" /><Text style={styles.dateTimeText}>{item.date}</Text></View>
-              <View style={styles.dateTimeRow}><Ionicons name="time-outline" size={14} color="#64748b" /><Text style={styles.dateTimeText}>{item.time}</Text></View>
-            </View>
-            <View style={styles.participantsContainer}>
-              <View style={styles.avatarStack}>
-                {item.participantAvatars.slice(0, 3).map((avatar, index) => (
-                  <View key={index} style={[styles.avatar, { backgroundColor: avatar.color }, index > 0 && styles.avatarOverlap]}><Text style={styles.avatarText}>{avatar.name}</Text></View>
-                ))}
-                {item.participants > 3 && <View style={[styles.avatar, styles.avatarMore, styles.avatarOverlap]}><Text style={styles.avatarMoreText}>+{item.participants - 3}</Text></View>}
-              </View>
-              <Text style={styles.participantCount}>{item.participants} {item.participants === 1 ? 'person' : 'people'}</Text>
-            </View>
-          </View>
-          <View style={styles.yourShareContainer}><Text style={styles.yourShareLabel}>Your share: </Text><Text style={styles.yourShareAmount}>Rs {item.yourShare}</Text></View>
-        </TouchableOpacity>
+        <RecentSceneCard scene={item} onPress={() => handleScenePress(item)} />
       </Swipeable>
     </GestureHandlerRootView>
   );
@@ -296,13 +299,13 @@ const ScenesScreen = ({ route }) => {
               </>
             )}
           </Animated.View>
-          <TouchableOpacity style={styles.createButton} activeOpacity={0.8} onPress={handleCreateScene}><Ionicons name="add" size={18} color="#ffffff" /><Text style={styles.createButtonText}>Create</Text></TouchableOpacity>
+          {adminGroups.length > 0 && <TouchableOpacity style={styles.createButton} activeOpacity={0.8} onPress={handleCreateScene}><Ionicons name="add" size={18} color="#ffffff" /><Text style={styles.createButtonText}>Create</Text></TouchableOpacity>}
         </View>
       </View>
       <View style={styles.filterSection}>
         <View style={styles.filterContainer}>
-          <TouchableOpacity style={[styles.filterChip, selectedFilter === 'All' && styles.activeFilterChip]} onPress={() => setSelectedFilter('All')} activeOpacity={0.7}><View style={styles.chipContent}><Ionicons name="apps" size={16} color={selectedFilter === 'All' ? '#ffffff' : '#64748b'} /><Text style={[styles.chipText, selectedFilter === 'All' && styles.activeChipText]}>All</Text><View style={[styles.chipBadge, selectedFilter === 'All' && styles.activeChipBadge]}><Text style={[styles.chipBadgeText, selectedFilter === 'All' && styles.activeChipBadgeText]}>{scenes.length}</Text></View></View></TouchableOpacity>
-          <TouchableOpacity style={[styles.filterChip, selectedFilter === 'Recent' && styles.activeFilterChip]} onPress={() => setSelectedFilter('Recent')} activeOpacity={0.7}><View style={styles.chipContent}><Ionicons name="time" size={16} color={selectedFilter === 'Recent' ? '#ffffff' : '#64748b'} /><Text style={[styles.chipText, selectedFilter === 'Recent' && styles.activeChipText]}>Recent</Text><View style={[styles.chipBadge, selectedFilter === 'Recent' && styles.activeChipBadge]}><Text style={[styles.chipBadgeText, selectedFilter === 'Recent' && styles.activeChipBadgeText]}>{scenes.filter(s => new Date(s.rawDate || s.date) > new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)).length}</Text></View></View></TouchableOpacity>
+          <TouchableOpacity style={[styles.filterChip, selectedFilter === 'All' && styles.activeFilterChip]} onPress={() => setSelectedFilter('All')} activeOpacity={0.7}><View style={styles.chipContent}><Ionicons name="apps" size={16} color={selectedFilter === 'All' ? '#ffffff' : colors.textSecondary} /><Text style={[styles.chipText, selectedFilter === 'All' && styles.activeChipText]}>All</Text><View style={[styles.chipBadge, selectedFilter === 'All' && styles.activeChipBadge]}><Text style={[styles.chipBadgeText, selectedFilter === 'All' && styles.activeChipBadgeText]}>{scenes.length}</Text></View></View></TouchableOpacity>
+          <TouchableOpacity style={[styles.filterChip, selectedFilter === 'Recent' && styles.activeFilterChip]} onPress={() => setSelectedFilter('Recent')} activeOpacity={0.7}><View style={styles.chipContent}><Ionicons name="time" size={16} color={selectedFilter === 'Recent' ? '#ffffff' : colors.textSecondary} /><Text style={[styles.chipText, selectedFilter === 'Recent' && styles.activeChipText]}>Recent</Text><View style={[styles.chipBadge, selectedFilter === 'Recent' && styles.activeChipBadge]}><Text style={[styles.chipBadgeText, selectedFilter === 'Recent' && styles.activeChipBadgeText]}>{scenes.filter(s => new Date(s.rawDate || s.date) > new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)).length}</Text></View></View></TouchableOpacity>
         </View>
       </View>
     </View>
@@ -310,7 +313,7 @@ const ScenesScreen = ({ route }) => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#f8fffe" />
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.background} />
       <FlatList
         data={loading ? [1, 2, 3, 4] : filteredScenes}
         renderItem={loading
@@ -321,10 +324,10 @@ const ScenesScreen = ({ route }) => {
         ListHeaderComponent={loading ? null : renderHeader}
         ListEmptyComponent={loading ? null : () => (
           <View style={styles.emptyContainer}>
-            <LinearGradient colors={['#f0fdfa', '#ecfeff']} style={styles.emptyIconContainer}><Ionicons name="receipt-outline" size={48} color="#06b6d4" /></LinearGradient>
+            <LinearGradient colors={isDark ? ['rgba(6,182,212,0.15)', 'rgba(6,182,212,0.08)'] : ['#f0fdfa', '#ecfeff']} style={styles.emptyIconContainer}><Ionicons name="receipt-outline" size={48} color="#06b6d4" /></LinearGradient>
             <Text style={styles.emptyTitle}>{searchText ? 'No matching scenes' : 'No expense scenes yet'}</Text>
             <Text style={styles.emptySubtitle}>{searchText ? 'Try adjusting your search terms' : 'Create your first shared expense scene to get started'}</Text>
-            {!searchText && <TouchableOpacity style={styles.emptyButton} onPress={handleCreateScene} activeOpacity={0.8}><Ionicons name="add-circle" size={20} color="#ffffff" /><Text style={styles.emptyButtonText}>Create First Scene</Text></TouchableOpacity>}
+            {!searchText && adminGroups.length > 0 && <TouchableOpacity style={styles.emptyButton} onPress={handleCreateScene} activeOpacity={0.8}><Ionicons name="add-circle" size={20} color="#ffffff" /><Text style={styles.emptyButtonText}>Create First Scene</Text></TouchableOpacity>}
           </View>
         )}
         ListFooterComponent={() => <View style={styles.listFooter} />}
@@ -349,66 +352,66 @@ const ScenesScreen = ({ route }) => {
   );
 };
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8fffe' },
+const getStyles = (colors) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.background },
   listContainer: { flexGrow: 1, paddingHorizontal: 20, paddingTop: 12, paddingBottom: 100 },
   headerSection: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 },
   headerContent: { flex: 1 },
-  title: { fontSize: 28, fontWeight: '800', color: '#0f172a', marginBottom: 4, letterSpacing: -0.5 },
-  subtitle: { fontSize: 14, color: '#64748b', fontWeight: '500' },
+  title: { fontSize: 28, fontWeight: '800', color: colors.text, marginBottom: 4, letterSpacing: -0.5 },
+  subtitle: { fontSize: 14, color: colors.textSecondary, fontWeight: '500' },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  headerSearchContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f1f5f9', borderRadius: 20, height: 40, overflow: 'hidden' },
+  headerSearchContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surfaceAlt, borderRadius: 20, height: 40, overflow: 'hidden' },
   searchIconButton: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   searchIconContainer: { width: 28, height: 40, alignItems: 'center', justifyContent: 'center', marginLeft: 6 },
   inputContainer: { flex: 1, height: 40, justifyContent: 'center' },
-  headerSearchInput: { flex: 1, fontSize: 14, color: '#1f2937', fontWeight: '500', paddingHorizontal: 2, height: 40 },
+  headerSearchInput: { flex: 1, fontSize: 14, color: colors.inputText, fontWeight: '500', paddingHorizontal: 2, height: 40 },
   clearButtonContainer: { width: 28, height: 40, alignItems: 'center', justifyContent: 'center' },
-  headerClearButton: { width: 24, height: 24, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: 'rgba(100, 116, 139, 0.1)' },
-  createButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#06b6d4', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12, gap: 6, shadowColor: '#06b6d4', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 6 },
+  headerClearButton: { width: 24, height: 24, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: 'rgba(100, 116, 139, 0.15)' },
+  createButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.primary, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12, gap: 6, shadowColor: colors.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 6 },
   createButtonText: { fontSize: 14, fontWeight: '600', color: '#ffffff' },
   filterSection: { marginBottom: 12 },
   filterContainer: { flexDirection: 'row', gap: 12 },
-  filterChip: { backgroundColor: '#f8fafc', borderRadius: 20, paddingHorizontal: 4, paddingVertical: 4, borderWidth: 1, borderColor: '#e2e8f0' },
-  activeFilterChip: { backgroundColor: '#06b6d4', borderColor: '#06b6d4' },
+  filterChip: { backgroundColor: colors.surfaceAlt, borderRadius: 20, paddingHorizontal: 4, paddingVertical: 4, borderWidth: 1, borderColor: colors.cardBorderMedium },
+  activeFilterChip: { backgroundColor: colors.primary, borderColor: colors.primary },
   chipContent: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 6, gap: 6 },
-  chipText: { fontSize: 14, fontWeight: '600', color: '#64748b' },
+  chipText: { fontSize: 14, fontWeight: '600', color: colors.textSecondary },
   activeChipText: { color: '#ffffff' },
-  chipBadge: { backgroundColor: '#e2e8f0', borderRadius: 10, paddingHorizontal: 6, paddingVertical: 2, minWidth: 20, alignItems: 'center' },
+  chipBadge: { backgroundColor: colors.skeleton, borderRadius: 10, paddingHorizontal: 6, paddingVertical: 2, minWidth: 20, alignItems: 'center' },
   activeChipBadge: { backgroundColor: 'rgba(255, 255, 255, 0.2)' },
-  chipBadgeText: { fontSize: 11, fontWeight: '700', color: '#64748b' },
+  chipBadgeText: { fontSize: 11, fontWeight: '700', color: colors.textSecondary },
   activeChipBadgeText: { color: '#ffffff' },
-  sceneCard: { backgroundColor: '#ffffff', borderRadius: 16, padding: 20, marginBottom: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 12, elevation: 4, borderWidth: 1, borderColor: '#f1f5f9' },
+  sceneCard: { backgroundColor: colors.card, borderRadius: 16, padding: 20, marginBottom: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 12, elevation: 4, borderWidth: 1, borderColor: colors.cardBorder },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 },
   titleSection: { flex: 1, marginRight: 16 },
-  sceneTitle: { fontSize: 18, fontWeight: '700', color: '#0f172a', marginBottom: 6, letterSpacing: -0.3 },
-  groupBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f0fdfa', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, alignSelf: 'flex-start', gap: 4 },
-  groupText: { fontSize: 12, color: '#06b6d4', fontWeight: '600' },
+  sceneTitle: { fontSize: 18, fontWeight: '700', color: colors.text, marginBottom: 6, letterSpacing: -0.3 },
+  groupBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.primaryLight, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, alignSelf: 'flex-start', gap: 4 },
+  groupText: { fontSize: 12, color: colors.primary, fontWeight: '600' },
   amountSection: { alignItems: 'flex-end' },
-  totalAmount: { fontSize: 20, fontWeight: '800', color: '#0f172a', letterSpacing: -0.5 },
-  totalLabel: { fontSize: 12, color: '#64748b', fontWeight: '500', marginTop: 2 },
+  totalAmount: { fontSize: 20, fontWeight: '800', color: colors.text, letterSpacing: -0.5 },
+  totalLabel: { fontSize: 12, color: colors.textSecondary, fontWeight: '500', marginTop: 2 },
   locationRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 4 },
-  locationText: { fontSize: 14, color: '#64748b', fontWeight: '500' },
-  description: { fontSize: 14, color: '#64748b', fontWeight: '500', marginBottom: 16, lineHeight: 20 },
+  locationText: { fontSize: 14, color: colors.textSecondary, fontWeight: '500' },
+  description: { fontSize: 14, color: colors.textSecondary, fontWeight: '500', marginBottom: 16, lineHeight: 20 },
   cardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 12 },
   dateTimeContainer: { flex: 1 },
   dateTimeRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 4, gap: 6 },
-  dateTimeText: { fontSize: 13, color: '#64748b', fontWeight: '500' },
+  dateTimeText: { fontSize: 13, color: colors.textSecondary, fontWeight: '500' },
   participantsContainer: { alignItems: 'flex-end' },
   avatarStack: { flexDirection: 'row', marginBottom: 6 },
-  avatar: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#ffffff' },
+  avatar: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: colors.card },
   avatarOverlap: { marginLeft: -8 },
   avatarText: { fontSize: 10, fontWeight: '700', color: '#ffffff' },
-  avatarMore: { backgroundColor: '#64748b' },
+  avatarMore: { backgroundColor: colors.textSecondary },
   avatarMoreText: { fontSize: 9, fontWeight: '700', color: '#ffffff' },
-  participantCount: { fontSize: 12, color: '#64748b', fontWeight: '500' },
-  yourShareContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f8fafc', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: '#e2e8f0' },
-  yourShareLabel: { fontSize: 13, color: '#64748b', fontWeight: '500' },
-  yourShareAmount: { fontSize: 13, fontWeight: '600', color: '#0f172a' },
+  participantCount: { fontSize: 12, color: colors.textSecondary, fontWeight: '500' },
+  yourShareContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surfaceAlt, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: colors.cardBorderMedium },
+  yourShareLabel: { fontSize: 13, color: colors.textSecondary, fontWeight: '500' },
+  yourShareAmount: { fontSize: 13, fontWeight: '600', color: colors.text },
   emptyContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 60 },
-  emptyIconContainer: { width: 120, height: 120, borderRadius: 60, backgroundColor: '#f0fdfa', alignItems: 'center', justifyContent: 'center', marginBottom: 24 },
-  emptyTitle: { fontSize: 20, fontWeight: '700', color: '#0f172a', marginBottom: 8, textAlign: 'center' },
-  emptySubtitle: { fontSize: 14, color: '#64748b', textAlign: 'center', lineHeight: 20, marginBottom: 32, paddingHorizontal: 32 },
-  emptyButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#06b6d4', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12, gap: 8, shadowColor: '#06b6d4', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 6 },
+  emptyIconContainer: { width: 120, height: 120, borderRadius: 60, alignItems: 'center', justifyContent: 'center', marginBottom: 24 },
+  emptyTitle: { fontSize: 20, fontWeight: '700', color: colors.text, marginBottom: 8, textAlign: 'center' },
+  emptySubtitle: { fontSize: 14, color: colors.textSecondary, textAlign: 'center', lineHeight: 20, marginBottom: 32, paddingHorizontal: 32 },
+  emptyButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12, gap: 8, shadowColor: colors.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 6 },
   emptyButtonText: { fontSize: 16, fontWeight: '600', color: '#ffffff' },
   rightActionsContainer: { flexDirection: 'row', alignItems: 'center', marginTop: 12 },
   actionButton: { width: 80, height: '100%', alignItems: 'center', justifyContent: 'center', gap: 4 },
@@ -416,9 +419,6 @@ const styles = StyleSheet.create({
   deleteButton: { backgroundColor: '#ef4444', borderTopRightRadius: 16, borderBottomRightRadius: 16 },
   actionButtonText: { fontSize: 12, fontWeight: '600', color: '#ffffff' },
   listFooter: { height: 200 },
-  // Skeleton
-  skRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  skBlock: { backgroundColor: '#e2e8f0', borderRadius: 6, height: 14 },
 });
 
 export default ScenesScreen;

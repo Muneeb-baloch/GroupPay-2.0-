@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from '../context/ThemeContext';
 
 const PillSelector = ({
   items = [],
@@ -13,6 +14,9 @@ const PillSelector = ({
   textStyle,
   activeTextStyle,
 }) => {
+  const { colors } = useTheme();
+  const styles = useMemo(() => getStyles(colors), [colors]);
+
   const content = items.map((item) => {
     const isSelected = selectedKey === item.key;
 
@@ -34,7 +38,7 @@ const PillSelector = ({
           <Ionicons
             name={item.icon}
             size={item.iconSize || 15}
-            color={isSelected ? (item.activeColor || '#ffffff') : (item.inactiveColor || '#64748b')}
+            color={isSelected ? (item.activeColor || '#ffffff') : (item.inactiveColor || colors.textSecondary)}
             style={styles.icon}
           />
         ) : null}
@@ -72,7 +76,7 @@ const PillSelector = ({
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (colors) => StyleSheet.create({
   chipsContainer: {
     flexDirection: 'row',
     gap: 10,
@@ -86,9 +90,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
     borderWidth: 1,
-    borderColor: '#dbeafe',
+    borderColor: colors.cardBorderMedium,
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: 999,
@@ -98,11 +102,11 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   pillActive: {
-    backgroundColor: '#06b6d4',
-    borderColor: '#06b6d4',
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   segmentedPillActive: {
-    shadowColor: '#06b6d4',
+    shadowColor: colors.primary,
     shadowOpacity: 0.18,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
@@ -112,7 +116,7 @@ const styles = StyleSheet.create({
     marginRight: 6,
   },
   text: {
-    color: '#475569',
+    color: colors.textSecondary,
     fontSize: 13,
     fontWeight: '700',
   },
@@ -128,7 +132,7 @@ const styles = StyleSheet.create({
   },
   countBubble: {
     marginLeft: 8,
-    backgroundColor: '#e2e8f0',
+    backgroundColor: colors.surfaceAlt,
     borderRadius: 999,
     minWidth: 22,
     paddingHorizontal: 7,
@@ -140,7 +144,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.2)',
   },
   countText: {
-    color: '#475569',
+    color: colors.textSecondary,
     fontSize: 11,
     fontWeight: '800',
   },

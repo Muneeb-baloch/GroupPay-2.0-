@@ -1,11 +1,9 @@
-import React, { useState, useCallback, useEffect } from 'react';
-import {
-  View, Text, StyleSheet, SafeAreaView, StatusBar,
-  TouchableOpacity, Image, Alert, Share, ScrollView,
-  Modal, ActivityIndicator, Dimensions,
-} from 'react-native';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { View, Text, StyleSheet, StatusBar, TouchableOpacity, Image, Alert, Share, ScrollView, Modal, ActivityIndicator, Dimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 import { scenesService } from '../services/scenesService';
 import { formatDate } from '../utils/helpers';
 
@@ -21,6 +19,8 @@ const memberColor = (id) => COLORS[Math.abs(Number(id) || 0) % COLORS.length];
 // ─── component ───────────────────────────────────────────────────────────────
 const ReceiptViewScreen = ({ navigation, route }) => {
   const { token, user } = useAuth();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => getStyles(colors), [colors]);
   // TransactionsScreen passes `transaction`; deposits still pass `deposit`
   const transaction = route?.params?.transaction || null;
   const deposit     = route?.params?.deposit     || null;
@@ -83,8 +83,9 @@ const ReceiptViewScreen = ({ navigation, route }) => {
     const share = perShare + extra;
     const bal   = paid - share;
     return {
-      id:     pid,
-      name:   p.person?.fullname || p.person?.username || p.name || 'Unknown',
+      id:       pid,
+      name:     p.person?.fullname || p.person?.username || p.name || 'Unknown',
+      imageUrl: p.person?.profile_picture_url || p.person?.avatar_url || null,
       paid,
       share,
       balance: bal,
@@ -113,19 +114,19 @@ const ReceiptViewScreen = ({ navigation, route }) => {
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <>
-      <SafeAreaView style={styles.container}>
-        <StatusBar barStyle="dark-content" backgroundColor="#f8fffe" />
+      <SafeAreaView style={styles.container} edges={['bottom']}>
+        <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.background} />
 
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity style={styles.headerBtn}
             onPress={() => navigation.goBack()} activeOpacity={0.7}>
-            <Ionicons name="arrow-back" size={24} color="#0f172a" />
+            <Ionicons name="arrow-back" size={24} color={colors.text} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Receipt</Text>
           <TouchableOpacity style={styles.headerBtn}
             onPress={handleShare} activeOpacity={0.7}>
-            <Ionicons name="share-outline" size={24} color="#0f172a" />
+            <Ionicons name="share-outline" size={24} color={colors.text} />
           </TouchableOpacity>
         </View>
 
@@ -136,7 +137,7 @@ const ReceiptViewScreen = ({ navigation, route }) => {
           {/* ── Receipt Image ── */}
           {loading ? (
             <View style={styles.imageBox}>
-              <ActivityIndicator size="large" color="#06b6d4" />
+              <ActivityIndicator size="large" color={colors.primary} />
             </View>
           ) : receiptImageUrl && !imageError ? (
             <TouchableOpacity style={styles.imageBox}
@@ -154,7 +155,7 @@ const ReceiptViewScreen = ({ navigation, route }) => {
             </TouchableOpacity>
           ) : (
             <View style={styles.noReceiptBox}>
-              <Ionicons name="image-outline" size={40} color="#94a3b8" />
+              <Ionicons name="image-outline" size={40} color={colors.textMuted} />
               <Text style={styles.noReceiptText}>No receipt photo attached</Text>
             </View>
           )}
@@ -170,7 +171,7 @@ const ReceiptViewScreen = ({ navigation, route }) => {
               </View>
               <View style={styles.summaryBlock}>
                 <Text style={styles.summaryLabel}>Your Share</Text>
-                <Text style={[styles.summaryValue, { color: '#06b6d4' }]}>
+                <Text style={[styles.summaryValue, { color: colors.primary }]}>
                   Rs {myShare.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                 </Text>
               </View>
@@ -179,23 +180,23 @@ const ReceiptViewScreen = ({ navigation, route }) => {
             <View style={styles.divider} />
 
             <View style={styles.detailRow}>
-              <Ionicons name="location-outline" size={16} color="#64748b" />
+              <Ionicons name="location-outline" size={16} color={colors.textSecondary} />
               <Text style={styles.detailLabel}>Location</Text>
               <Text style={styles.detailValue} numberOfLines={1}>{location}</Text>
             </View>
             <View style={styles.detailRow}>
-              <Ionicons name="calendar-outline" size={16} color="#64748b" />
+              <Ionicons name="calendar-outline" size={16} color={colors.textSecondary} />
               <Text style={styles.detailLabel}>Date</Text>
               <Text style={styles.detailValue}>{displayDate}</Text>
             </View>
             <View style={styles.detailRow}>
-              <Ionicons name="people-outline" size={16} color="#64748b" />
+              <Ionicons name="people-outline" size={16} color={colors.textSecondary} />
               <Text style={styles.detailLabel}>Group</Text>
               <Text style={styles.detailValue} numberOfLines={1}>{groupName}</Text>
             </View>
             {description ? (
               <View style={[styles.detailRow, { alignItems: 'flex-start' }]}>
-                <Ionicons name="document-text-outline" size={16} color="#64748b" style={{ marginTop: 1 }} />
+                <Ionicons name="document-text-outline" size={16} color={colors.textSecondary} style={{ marginTop: 1 }} />
                 <Text style={styles.detailLabel}>Notes</Text>
                 <Text style={[styles.detailValue, { flex: 1 }]}>{description}</Text>
               </View>
@@ -215,7 +216,7 @@ const ReceiptViewScreen = ({ navigation, route }) => {
               <View style={styles.expenseDivider} />
               <View style={styles.expenseBlock}>
                 <Text style={styles.expenseBlockLabel}>My Share</Text>
-                <Text style={[styles.expenseBlockValue, { color: '#0f172a' }]}>
+                <Text style={[styles.expenseBlockValue, { color: colors.text }]}>
                   Rs {myShare.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                 </Text>
               </View>
@@ -223,21 +224,21 @@ const ReceiptViewScreen = ({ navigation, route }) => {
               <View style={styles.expenseBlock}>
                 <Text style={styles.expenseBlockLabel}>Balance</Text>
                 <Text style={[styles.expenseBlockValue,
-                  { color: myBalance >= -0.01 ? '#10b981' : '#ef4444' }]}>
+                  { color: myBalance >= -0.01 ? '#10b981' : colors.error }]}>
                   {myBalance > 0.01 ? '+' : ''}Rs{' '}
                   {Math.abs(myBalance).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                 </Text>
               </View>
             </View>
             <View style={[styles.statusPill,
-              { backgroundColor: myBalance >= -0.01 ? '#dcfce7' : '#fee2e2' }]}>
+              { backgroundColor: myBalance >= -0.01 ? colors.successLight : colors.errorLight }]}>
               <Ionicons
                 name={myBalance >= -0.01 ? 'checkmark-circle' : 'alert-circle'}
                 size={14}
-                color={myBalance >= -0.01 ? '#166534' : '#991b1b'}
+                color={myBalance >= -0.01 ? '#166534' : colors.error}
               />
               <Text style={[styles.statusPillText,
-                { color: myBalance >= -0.01 ? '#166534' : '#991b1b' }]}>
+                { color: myBalance >= -0.01 ? '#166534' : colors.error }]}>
                 {myBalance >= -0.01
                   ? myBalance > 0.01
                     ? `You get back Rs ${myBalance.toFixed(2)}`
@@ -258,8 +259,11 @@ const ReceiptViewScreen = ({ navigation, route }) => {
               </View>
               {participants.map(p => (
                 <View key={p.id} style={styles.participantRow}>
-                  <View style={[styles.avatar, { backgroundColor: p.color }]}>
-                    <Text style={styles.avatarText}>{getInitials(p.name)}</Text>
+                  <View style={[styles.avatar, { backgroundColor: p.imageUrl ? 'transparent' : p.color }]}>
+                    {p.imageUrl
+                      ? <Image source={{ uri: p.imageUrl }} style={{ width: 40, height: 40, borderRadius: 20 }} />
+                      : <Text style={styles.avatarText}>{getInitials(p.name)}</Text>
+                    }
                   </View>
                   <View style={styles.participantInfo}>
                     <Text style={styles.participantName}>
@@ -271,13 +275,13 @@ const ReceiptViewScreen = ({ navigation, route }) => {
                   </View>
                   <View style={styles.participantRight}>
                     <Text style={[styles.participantBalance,
-                      { color: p.balance >= -0.01 ? '#10b981' : '#ef4444' }]}>
+                      { color: p.balance >= -0.01 ? '#10b981' : colors.error }]}>
                       {p.balance > 0.01 ? '+' : ''}Rs {p.balance.toFixed(2)}
                     </Text>
                     <View style={[styles.badge,
-                      { backgroundColor: p.status === 'paid' ? '#dcfce7' : '#fee2e2' }]}>
+                      { backgroundColor: p.status === 'paid' ? colors.successLight : colors.errorLight }]}>
                       <Text style={[styles.badgeText,
-                        { color: p.status === 'paid' ? '#166534' : '#991b1b' }]}>
+                        { color: p.status === 'paid' ? '#166634' : colors.error }]}>
                         {p.status === 'paid' ? 'Settled' : 'Owes'}
                       </Text>
                     </View>
@@ -294,16 +298,16 @@ const ReceiptViewScreen = ({ navigation, route }) => {
       <Modal visible={fullScreenVisible} transparent={false}
         animationType="slide" onRequestClose={() => setFullScreenVisible(false)}
         presentationStyle="fullScreen">
-        <SafeAreaView style={styles.fsContainer}>
+        <SafeAreaView style={styles.fsContainer} edges={['bottom']}>
           <View style={styles.fsHeader}>
             <TouchableOpacity style={styles.headerBtn}
               onPress={() => setFullScreenVisible(false)} activeOpacity={0.7}>
-              <Ionicons name="arrow-back" size={24} color="#0f172a" />
+              <Ionicons name="arrow-back" size={24} color={colors.text} />
             </TouchableOpacity>
             <Text style={styles.headerTitle}>Receipt</Text>
             <TouchableOpacity style={styles.headerBtn}
               onPress={handleShare} activeOpacity={0.7}>
-              <Ionicons name="share-outline" size={24} color="#0f172a" />
+              <Ionicons name="share-outline" size={24} color={colors.text} />
             </TouchableOpacity>
           </View>
           <View style={styles.fsImageContainer}>
@@ -319,24 +323,24 @@ const ReceiptViewScreen = ({ navigation, route }) => {
   );
 };
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8fffe' },
+const getStyles = (colors) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.background },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 20, paddingVertical: 14,
-    backgroundColor: '#ffffff', borderBottomWidth: 1, borderBottomColor: '#f1f5f9',
+    backgroundColor: colors.card, borderBottomWidth: 1, borderBottomColor: colors.cardBorder,
   },
   headerBtn: {
-    padding: 8, borderRadius: 8, backgroundColor: '#f8fafc',
+    padding: 8, borderRadius: 8, backgroundColor: colors.inputBg,
     width: 40, height: 40, alignItems: 'center', justifyContent: 'center',
   },
-  headerTitle: { fontSize: 18, fontWeight: '700', color: '#0f172a' },
+  headerTitle: { fontSize: 18, fontWeight: '700', color: colors.text },
   scroll: { flex: 1 },
   scrollContent: { padding: 20, paddingBottom: 100 },
 
   // Image
   imageBox: {
-    width: '100%', height: 280, backgroundColor: '#ffffff',
+    width: '100%', height: 280, backgroundColor: colors.card,
     borderRadius: 16, overflow: 'hidden',
     shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.08, shadowRadius: 12, elevation: 4,
@@ -351,47 +355,47 @@ const styles = StyleSheet.create({
   },
   zoomText: { fontSize: 11, color: '#ffffff', fontWeight: '600' },
   noReceiptBox: {
-    width: '100%', height: 140, backgroundColor: '#f1f5f9',
+    width: '100%', height: 140, backgroundColor: colors.surfaceAlt,
     borderRadius: 16, alignItems: 'center', justifyContent: 'center',
     marginBottom: 20, gap: 8,
   },
-  noReceiptText: { fontSize: 14, color: '#94a3b8', fontWeight: '500' },
+  noReceiptText: { fontSize: 14, color: colors.textMuted, fontWeight: '500' },
 
   // Cards
   card: {
-    backgroundColor: '#ffffff', borderRadius: 16, padding: 20,
-    marginBottom: 16, borderWidth: 1, borderColor: '#f1f5f9',
+    backgroundColor: colors.card, borderRadius: 16, padding: 20,
+    marginBottom: 16, borderWidth: 1, borderColor: colors.cardBorder,
     shadowColor: '#0f172a', shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.04, shadowRadius: 6, elevation: 2,
   },
-  cardTitle: { fontSize: 16, fontWeight: '700', color: '#0f172a', marginBottom: 14 },
+  cardTitle: { fontSize: 16, fontWeight: '700', color: colors.text, marginBottom: 14 },
   cardHeaderRow: {
     flexDirection: 'row', justifyContent: 'space-between',
     alignItems: 'center', marginBottom: 14,
   },
-  cardSubtitle: { fontSize: 12, color: '#64748b', fontWeight: '500' },
-  divider: { height: 1, backgroundColor: '#f1f5f9', marginVertical: 12 },
+  cardSubtitle: { fontSize: 12, color: colors.textSecondary, fontWeight: '500' },
+  divider: { height: 1, backgroundColor: colors.cardBorder, marginVertical: 12 },
 
   // Summary
   summaryRow: { flexDirection: 'row', gap: 12, marginBottom: 4 },
-  summaryBlock: { flex: 1, backgroundColor: '#f8fafc', borderRadius: 10, padding: 12 },
-  summaryLabel: { fontSize: 11, color: '#64748b', fontWeight: '500', marginBottom: 4 },
-  summaryValue: { fontSize: 17, fontWeight: '800', color: '#0f172a', letterSpacing: -0.3 },
+  summaryBlock: { flex: 1, backgroundColor: colors.inputBg, borderRadius: 10, padding: 12 },
+  summaryLabel: { fontSize: 11, color: colors.textSecondary, fontWeight: '500', marginBottom: 4 },
+  summaryValue: { fontSize: 17, fontWeight: '800', color: colors.text, letterSpacing: -0.3 },
 
   // Details
   detailRow: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
     paddingVertical: 7,
-    borderBottomWidth: 1, borderBottomColor: '#f8fafc',
+    borderBottomWidth: 1, borderBottomColor: colors.cardBorder,
   },
-  detailLabel: { fontSize: 13, color: '#64748b', fontWeight: '500', width: 68 },
-  detailValue: { fontSize: 13, color: '#0f172a', fontWeight: '600', flex: 1 },
+  detailLabel: { fontSize: 13, color: colors.textSecondary, fontWeight: '500', width: 68 },
+  detailValue: { fontSize: 13, color: colors.text, fontWeight: '600', flex: 1 },
 
   // My expense
   myExpenseGrid: { flexDirection: 'row', marginBottom: 14 },
   expenseBlock: { flex: 1, alignItems: 'center' },
-  expenseDivider: { width: 1, backgroundColor: '#f1f5f9', marginVertical: 4 },
-  expenseBlockLabel: { fontSize: 11, color: '#64748b', fontWeight: '500', marginBottom: 4 },
+  expenseDivider: { width: 1, backgroundColor: colors.cardBorder, marginVertical: 4 },
+  expenseBlockLabel: { fontSize: 11, color: colors.textSecondary, fontWeight: '500', marginBottom: 4 },
   expenseBlockValue: { fontSize: 15, fontWeight: '800', letterSpacing: -0.3 },
   statusPill: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
@@ -402,7 +406,7 @@ const styles = StyleSheet.create({
   // Participants
   participantRow: {
     flexDirection: 'row', alignItems: 'center',
-    paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#f8fafc',
+    paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.cardBorder,
   },
   avatar: {
     width: 40, height: 40, borderRadius: 20,
@@ -410,22 +414,22 @@ const styles = StyleSheet.create({
   },
   avatarText: { fontSize: 13, fontWeight: '700', color: '#ffffff' },
   participantInfo: { flex: 1 },
-  participantName: { fontSize: 14, fontWeight: '600', color: '#0f172a', marginBottom: 2 },
-  participantSub: { fontSize: 12, color: '#64748b', fontWeight: '500' },
+  participantName: { fontSize: 14, fontWeight: '600', color: colors.text, marginBottom: 2 },
+  participantSub: { fontSize: 12, color: colors.textSecondary, fontWeight: '500' },
   participantRight: { alignItems: 'flex-end', gap: 4 },
   participantBalance: { fontSize: 14, fontWeight: '700' },
   badge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
   badgeText: { fontSize: 11, fontWeight: '600' },
 
   // Full screen
-  fsContainer: { flex: 1, backgroundColor: '#ffffff' },
+  fsContainer: { flex: 1, backgroundColor: colors.card },
   fsHeader: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 20, paddingVertical: 14,
-    borderBottomWidth: 1, borderBottomColor: '#f1f5f9',
+    borderBottomWidth: 1, borderBottomColor: colors.cardBorder,
   },
   fsImageContainer: {
-    flex: 1, backgroundColor: '#f8fafc',
+    flex: 1, backgroundColor: colors.inputBg,
     alignItems: 'center', justifyContent: 'center', padding: 16,
   },
   fsImage: {

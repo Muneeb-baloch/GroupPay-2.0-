@@ -1,9 +1,10 @@
-import React, { useState, useCallback, useEffect } from 'react';
-import { 
-  View, 
-  Text, 
-  FlatList, 
-  TouchableOpacity, 
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
+import {
+  View,
+  Text,
+  FlatList,
+  TouchableOpacity,
   StyleSheet,
   Alert,
   Pressable,
@@ -15,32 +16,84 @@ import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
 import { groupsService } from '../services/groupsService';
 import { formatBalance, getStatusColor } from '../utils/helpers';
-import { COLORS, SPACING, RADIUS, FONT, SHADOW } from '../constants/theme';
+import { cache } from '../utils/cache';
+import { useTheme } from '../context/ThemeContext';
 
 const GroupsScreen = ({ route }) => {
   const navigation = useNavigation();
   const { token, user } = useAuth();
+  const { colors } = useTheme();
+  const styles = useMemo(() => getStyles(colors), [colors]);
   const [activeTab, setActiveTab] = useState('your');
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const [groupsData, setGroupsData] = useState({ your: [], member: [] });
+  const [groupBalances, setGroupBalances] = useState({});
+  const [groupMemberCounts, setGroupMemberCounts] = useState({});
 
-  // Fetch groups from API
-  const fetchGroups = useCallback(async () => {
-    try {
-      const result = await groupsService.fetchGroups(token, user?.person_id || user?.id || null);
-      setGroupsData({ your: result.your, member: result.member });
-    } catch (error) {
-      console.log('Fetch groups error:', error.message);
-    } finally {
-      setLoading(false);
+  const fetchGroupBalances = useCallback(async (groups) => {
+    const all = [...(groups.your || []), ...(groups.member || [])];
+    await Promise.all(all.map(async (group) => {
+      try {
+        const [balanceData, membersData] = await Promise.all([
+          groupsService.getMyGroupBalance(token, group.id).catch(() => null),
+          groupsService.getGroupMembers(token, group.id).catch(() => null),
+        ]);
+
+        if (balanceData) {
+          const balance = parseFloat(
+            balanceData?.data?.balance ?? balanceData?.data?.net_balance ?? balanceData?.data?.my_balance ??
+            balanceData?.balance ?? balanceData?.net_balance ?? balanceData?.my_balance ?? 0
+          );
+          setGroupBalances(prev => ({ ...prev, [group.id]: balance }));
+        }
+
+        if (membersData) {
+          const raw = membersData?.data?.members || membersData?.data?.participants ||
+            (Array.isArray(membersData?.data) ? membersData.data : null) ||
+            membersData?.members || membersData?.participants || membersData?.rows ||
+            (Array.isArray(membersData) ? membersData : []);
+          if (Array.isArray(raw) && raw.length > 0) {
+            setGroupMemberCounts(prev => ({ ...prev, [group.id]: raw.length }));
+          }
+        }
+      } catch {
+        // leave defaults
+      }
+    }));
+  }, [token]);
+
+  const fetchGroups = useCallback(async (silent = false) => {
+    const userId = String(user?.person_id || user?.id || '');
+    const cacheKey = `groups_${userId}`;
+
+    if (!silent) {
+      const cached = await cache.get(cacheKey);
+      if (cached) {
+        setGroupsData(cached);
+        setLoading(false);
+      }
     }
-  }, [token, user]);
 
-  useEffect(() => {
-    fetchGroups();
-  }, [fetchGroups]);
+    try {
+      const result = await groupsService.fetchGroups(token, userId || null);
+      const fresh = { your: result.your, member: result.member };
+      setGroupsData(fresh);
+      await cache.set(cacheKey, fresh);
+      fetchGroupBalances(fresh);
+    } catch (error) {
+      // network failure — cached data is already showing
+    } finally {
+      if (!silent) setLoading(false);
+    }
+  }, [token, user, fetchGroupBalances]);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchGroups();
+    }, [fetchGroups])
+  );
 
   // Handle new group from CreateGroupScreen - refresh from API
   React.useEffect(() => {
@@ -53,7 +106,7 @@ const GroupsScreen = ({ route }) => {
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await fetchGroups();
+    await fetchGroups(true);
     setRefreshing(false);
   }, [fetchGroups]);
   const renderSkeletonCard = useCallback(() => (
@@ -146,8 +199,10 @@ const GroupsScreen = ({ route }) => {
 
     try {
       await groupsService.toggleStar(token, groupId, newStarred);
+      // Invalidate cache so HomeScreen reflects the updated star on next focus
+      const userId = String(user?.person_id || user?.id || '');
+      await cache.clear(`groups_${userId}`);
     } catch (error) {
-      console.log('Toggle star error:', error.message);
       // Revert on failure
       setGroupsData(prevData => {
         const newData = { ...prevData };
@@ -160,11 +215,18 @@ const GroupsScreen = ({ route }) => {
         return newData;
       });
     }
-  }, [groupsData, token]);
+  }, [groupsData, token, user]);
 
   // Skeleton Loading Component
 
-  const renderGroupCard = useCallback((group) => (
+  const renderGroupCard = useCallback((group) => {
+    const liveBalance = groupBalances.hasOwnProperty(group.id)
+      ? groupBalances[group.id]
+      : group.totalBalance;
+    const liveMembers = groupMemberCounts.hasOwnProperty(group.id)
+      ? groupMemberCounts[group.id]
+      : group.members;
+    return (
     <Pressable 
       key={group.id} 
       style={({ pressed }) => [
@@ -188,10 +250,10 @@ const GroupsScreen = ({ route }) => {
           
           <View style={styles.groupMetadata}>
             <View style={styles.roleContainer}>
-              <Ionicons 
-                name={group.role === 'admin' ? 'shield-checkmark' : 'person'} 
-                size={12} 
-                color="#6b7280" 
+              <Ionicons
+                name={group.role === 'admin' ? 'shield-checkmark' : 'person'}
+                size={12}
+                color={colors.textSecondary}
               />
               <Text style={styles.roleText}>{group.role.toUpperCase()}</Text>
             </View>
@@ -204,10 +266,10 @@ const GroupsScreen = ({ route }) => {
           activeOpacity={0.7}
           onPress={() => toggleFavorite(group.id)}
         >
-          <Ionicons 
-            name={group.isFavorite ? "star" : "star-outline"} 
-            size={18} 
-            color={group.isFavorite ? "#f59e0b" : "#9ca3af"} 
+          <Ionicons
+            name={group.isFavorite ? "star" : "star-outline"}
+            size={18}
+            color={group.isFavorite ? "#f59e0b" : colors.textMuted}
           />
         </TouchableOpacity>
       </View>
@@ -218,25 +280,25 @@ const GroupsScreen = ({ route }) => {
           <Text style={styles.balanceLabel}>Balance</Text>
           <Text style={[
             styles.balanceAmount,
-            { color: group.totalBalance >= 0 ? '#10b981' : '#ef4444' }
+            { color: liveBalance >= 0 ? '#10b981' : '#ef4444' }
           ]}>
-            {formatBalance(group.totalBalance)}
+            {formatBalance(liveBalance)}
           </Text>
         </View>
-        
+
         <View style={styles.membersInfo}>
           <View style={styles.membersCount}>
-            <Ionicons name="people" size={14} color="#6b7280" />
+            <Ionicons name="people" size={14} color={colors.textSecondary} />
             <Text style={styles.membersText}>
-              {group.members} member{group.members !== 1 ? 's' : ''}
+              {liveMembers} member{liveMembers !== 1 ? 's' : ''}
             </Text>
           </View>
           <View style={styles.memberAvatars}>
             {group.memberInitials.slice(0, 3).map((initial, index) => (
-              <View 
-                key={index} 
+              <View
+                key={index}
                 style={[
-                  styles.avatar, 
+                  styles.avatar,
                   { backgroundColor: group.color },
                   index > 0 && styles.avatarOverlap
                 ]}
@@ -244,9 +306,9 @@ const GroupsScreen = ({ route }) => {
                 <Text style={styles.avatarText}>{initial}</Text>
               </View>
             ))}
-            {group.members > 3 && (
+            {liveMembers > 3 && (
               <View style={[styles.avatar, styles.avatarMore, styles.avatarOverlap]}>
-                <Text style={styles.avatarMoreText}>+{group.members - 3}</Text>
+                <Text style={styles.avatarMoreText}>+{liveMembers - 3}</Text>
               </View>
             )}
           </View>
@@ -260,7 +322,7 @@ const GroupsScreen = ({ route }) => {
           onPress={() => handleGroupAction('transactions', group)}
           activeOpacity={0.7}
         >
-          <View style={[styles.actionIconContainer, { backgroundColor: '#eff6ff' }]}>
+          <View style={[styles.actionIconContainer, { backgroundColor: colors.isDark ? 'rgba(37,99,235,0.18)' : '#eff6ff' }]}>
             <Ionicons name="receipt" size={16} color="#2563eb" />
           </View>
           <Text style={styles.actionLabel}>Transactions</Text>
@@ -271,7 +333,7 @@ const GroupsScreen = ({ route }) => {
           onPress={() => handleGroupAction('deposits', group)}
           activeOpacity={0.7}
         >
-          <View style={[styles.actionIconContainer, { backgroundColor: '#f0fdf4' }]}>
+          <View style={[styles.actionIconContainer, { backgroundColor: colors.isDark ? 'rgba(22,163,74,0.18)' : '#f0fdf4' }]}>
             <Ionicons name="wallet" size={16} color="#16a34a" />
           </View>
           <Text style={styles.actionLabel}>Deposits</Text>
@@ -283,7 +345,7 @@ const GroupsScreen = ({ route }) => {
             onPress={() => handleGroupAction('manage', group)}
             activeOpacity={0.7}
           >
-            <View style={[styles.actionIconContainer, { backgroundColor: '#f0f9ff' }]}>
+            <View style={[styles.actionIconContainer, { backgroundColor: colors.isDark ? 'rgba(6,182,212,0.18)' : '#f0f9ff' }]}>
               <Ionicons name="people" size={16} color="#06b6d4" />
             </View>
             <Text style={[styles.actionLabel, { color: '#06b6d4' }]}>Manage</Text>
@@ -295,14 +357,15 @@ const GroupsScreen = ({ route }) => {
           onPress={() => handleGroupAction('leave', group)}
           activeOpacity={0.7}
         >
-          <View style={[styles.actionIconContainer, { backgroundColor: '#fef2f2' }]}>
+          <View style={[styles.actionIconContainer, { backgroundColor: colors.isDark ? 'rgba(239,68,68,0.18)' : '#fef2f2' }]}>
             <Ionicons name="exit-outline" size={16} color="#dc2626" />
           </View>
           <Text style={[styles.actionLabel, { color: '#dc2626' }]}>Leave</Text>
         </TouchableOpacity>
       </View>
     </Pressable>
-  ), [handleGroupAction, formatBalance, getStatusColor, toggleFavorite]);
+    );
+  }, [handleGroupAction, formatBalance, getStatusColor, toggleFavorite, groupBalances, groupMemberCounts]);
 
   const renderEmptyState = useCallback(() => (
     <View style={styles.emptyState}>
@@ -473,10 +536,10 @@ const GroupsScreen = ({ route }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (colors) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8fffe',
+    backgroundColor: colors.background,
   },
   flatListContent: {
     paddingHorizontal: 20,
@@ -503,13 +566,13 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 28,
     fontWeight: '800',
-    color: '#0f172a',
+    color: colors.text,
     marginBottom: 4,
     letterSpacing: -0.5,
   },
   subtitle: {
     fontSize: 15,
-    color: '#64748b',
+    color: colors.textSecondary,
     fontWeight: '500',
   },
   headerActions: {
@@ -520,7 +583,7 @@ const styles = StyleSheet.create({
   headerAction: {
     padding: 8,
     borderRadius: 8,
-    backgroundColor: '#f1f5f9',
+    backgroundColor: colors.surfaceAlt,
   },
   createButton: {
     flexDirection: 'row',
@@ -552,12 +615,12 @@ const styles = StyleSheet.create({
   },
   filterChip: {
     flex: 1,
-    backgroundColor: '#f8fafc',
+    backgroundColor: colors.surfaceAlt,
     borderRadius: 16,
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderWidth: 1,
-    borderColor: '#e2e8f0',
+    borderColor: colors.cardBorderMedium,
   },
   activeFilterChip: {
     backgroundColor: '#06b6d4',
@@ -577,13 +640,13 @@ const styles = StyleSheet.create({
   chipText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#64748b',
+    color: colors.textSecondary,
   },
   activeChipText: {
     color: '#ffffff',
   },
   chipBadge: {
-    backgroundColor: '#e2e8f0',
+    backgroundColor: colors.skeleton,
     borderRadius: 10,
     paddingHorizontal: 6,
     paddingVertical: 2,
@@ -596,7 +659,7 @@ const styles = StyleSheet.create({
   chipBadgeText: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#64748b',
+    color: colors.textSecondary,
   },
   activeChipBadgeText: {
     color: '#ffffff',
@@ -604,16 +667,16 @@ const styles = StyleSheet.create({
 
   // Group Card Styles - More Compact
   groupCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 16, // Reduced from 20
-    padding: 16, // Reduced from 20
+    backgroundColor: colors.card,
+    borderRadius: 16,
+    padding: 16,
     shadowColor: '#0f172a',
-    shadowOffset: { width: 0, height: 2 }, // Reduced shadow
-    shadowOpacity: 0.04, // Lighter shadow
-    shadowRadius: 8, // Reduced shadow radius
-    elevation: 2, // Reduced elevation
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
     borderWidth: 1,
-    borderColor: '#f1f5f9',
+    borderColor: colors.cardBorder,
   },
   groupCardPressed: {
     transform: [{ scale: 0.98 }],
@@ -642,16 +705,16 @@ const styles = StyleSheet.create({
     marginRight: 10, // Reduced from 12
   },
   groupName: {
-    fontSize: 18, // Reduced from 20
+    fontSize: 18,
     fontWeight: '700',
-    color: '#0f172a',
+    color: colors.text,
     flex: 1,
     letterSpacing: -0.3,
   },
   statusContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f8fafc',
+    backgroundColor: colors.surfaceAlt,
     paddingHorizontal: 6, // Reduced from 8
     paddingVertical: 3, // Reduced from 4
     borderRadius: 6, // Reduced from 8
@@ -678,19 +741,19 @@ const styles = StyleSheet.create({
     gap: 3, // Reduced from 4
   },
   roleText: {
-    fontSize: 11, // Reduced from 12
+    fontSize: 11,
     fontWeight: '600',
-    color: '#6b7280',
+    color: colors.textSecondary,
   },
   lastActivity: {
-    fontSize: 11, // Reduced from 12
-    color: '#9ca3af',
+    fontSize: 11,
+    color: colors.textMuted,
     fontWeight: '500',
   },
   favoriteButton: {
-    padding: 6, // Reduced from 8
-    borderRadius: 6, // Reduced from 8
-    backgroundColor: '#f8fafc',
+    padding: 6,
+    borderRadius: 6,
+    backgroundColor: colors.surfaceAlt,
     marginLeft: 8,
   },
 
@@ -699,9 +762,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 10, // Reduced from 16
-    marginBottom: 12, // Reduced from 16
-    backgroundColor: '#f8fafc', // Light background instead of borders
+    paddingVertical: 10,
+    marginBottom: 12,
+    backgroundColor: colors.surfaceAlt,
     borderRadius: 8,
     paddingHorizontal: 12,
   },
@@ -709,10 +772,10 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   balanceLabel: {
-    fontSize: 12, // Reduced from 14
-    color: '#64748b',
+    fontSize: 12,
+    color: colors.textSecondary,
     fontWeight: '500',
-    marginBottom: 2, // Reduced from 4
+    marginBottom: 2,
   },
   balanceAmount: {
     fontSize: 20, // Reduced from 24
@@ -729,21 +792,21 @@ const styles = StyleSheet.create({
     marginBottom: 6, // Reduced from 8
   },
   membersText: {
-    fontSize: 12, // Reduced from 14
-    color: '#64748b',
+    fontSize: 12,
+    color: colors.textSecondary,
     fontWeight: '500',
   },
   memberAvatars: {
     flexDirection: 'row',
   },
   avatar: {
-    width: 28, // Reduced from 32
-    height: 28, // Reduced from 32
-    borderRadius: 14, // Reduced from 16
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
-    borderColor: '#ffffff',
+    borderColor: colors.card,
   },
   avatarOverlap: {
     marginLeft: -10, // Reduced from -12
@@ -781,9 +844,9 @@ const styles = StyleSheet.create({
     marginBottom: 6, // Reduced from 8
   },
   actionLabel: {
-    fontSize: 11, // Reduced from 12
+    fontSize: 11,
     fontWeight: '600',
-    color: '#374151',
+    color: colors.textSecondary,
     textAlign: 'center',
   },
 
@@ -797,23 +860,23 @@ const styles = StyleSheet.create({
     width: 100,
     height: 100,
     borderRadius: 50,
-    backgroundColor: '#f0fdfa',
+    backgroundColor: colors.primaryLight,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 24,
     borderWidth: 1,
-    borderColor: '#e0f2fe',
+    borderColor: colors.primaryBorder,
   },
   emptyTitle: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#0f172a',
+    color: colors.text,
     marginBottom: 10,
     textAlign: 'center',
   },
   emptySubtitle: {
     fontSize: 14,
-    color: '#64748b',
+    color: colors.textSecondary,
     textAlign: 'center',
     lineHeight: 22,
     marginBottom: 28,
@@ -841,7 +904,7 @@ const styles = StyleSheet.create({
 
   // Skeleton Loading Styles
   skeletonCard: {
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
     borderRadius: 20,
     padding: 20,
     marginBottom: 16,
@@ -851,7 +914,7 @@ const styles = StyleSheet.create({
     shadowRadius: 16,
     elevation: 4,
     borderWidth: 1,
-    borderColor: '#f1f5f9',
+    borderColor: colors.cardBorder,
   },
   skeletonHeader: {
     flexDirection: 'row',
@@ -861,21 +924,21 @@ const styles = StyleSheet.create({
   skeletonIndicator: {
     width: 4,
     height: 20,
-    backgroundColor: '#e2e8f0',
+    backgroundColor: colors.skeleton,
     borderRadius: 2,
     marginRight: 12,
   },
   skeletonTitle: {
     flex: 1,
     height: 20,
-    backgroundColor: '#e2e8f0',
+    backgroundColor: colors.skeleton,
     borderRadius: 4,
     marginRight: 12,
   },
   skeletonStatus: {
     width: 60,
     height: 16,
-    backgroundColor: '#e2e8f0',
+    backgroundColor: colors.skeleton,
     borderRadius: 8,
   },
   skeletonMeta: {
@@ -886,13 +949,13 @@ const styles = StyleSheet.create({
   skeletonRole: {
     width: 80,
     height: 14,
-    backgroundColor: '#e2e8f0',
+    backgroundColor: colors.skeleton,
     borderRadius: 4,
   },
   skeletonActivity: {
     width: 100,
     height: 14,
-    backgroundColor: '#e2e8f0',
+    backgroundColor: colors.skeleton,
     borderRadius: 4,
   },
   skeletonBalance: {
@@ -902,19 +965,19 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     borderTopWidth: 1,
     borderBottomWidth: 1,
-    borderColor: '#f1f5f9',
+    borderColor: colors.cardBorder,
     marginBottom: 16,
   },
   skeletonBalanceLabel: {
     width: 80,
     height: 14,
-    backgroundColor: '#e2e8f0',
+    backgroundColor: colors.skeleton,
     borderRadius: 4,
   },
   skeletonBalanceAmount: {
     width: 100,
     height: 24,
-    backgroundColor: '#e2e8f0',
+    backgroundColor: colors.skeleton,
     borderRadius: 4,
   },
   skeletonAvatars: {
@@ -924,7 +987,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: '#e2e8f0',
+    backgroundColor: colors.skeleton,
   },
   skeletonAvatarOverlap: {
     marginLeft: -12,
@@ -936,7 +999,7 @@ const styles = StyleSheet.create({
   skeletonAction: {
     width: 60,
     height: 60,
-    backgroundColor: '#e2e8f0',
+    backgroundColor: colors.skeleton,
     borderRadius: 30,
   },
 });

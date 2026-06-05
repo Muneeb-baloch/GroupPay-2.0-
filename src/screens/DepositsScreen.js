@@ -1,32 +1,28 @@
-import React, { useState, useCallback, useEffect } from 'react';
-import { 
-  View, 
-  Text, 
-  FlatList, 
-  TouchableOpacity, 
-  StyleSheet,
-  SafeAreaView,
-  StatusBar,
-  RefreshControl,
-  Alert,
-  Pressable,
-  ScrollView,
-  ActivityIndicator
-} from 'react-native';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, StatusBar, RefreshControl, Alert, Pressable, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 import { depositsService } from '../services/depositsService';
 import PillSelector from '../components/PillSelector';
+import { cache } from '../utils/cache';
 
 const DepositsScreen = ({ route }) => {
   const navigation = useNavigation();
   const { groupName = 'Chichory', groupId, groupData } = route?.params || {};
   const { token, user } = useAuth();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => getStyles(colors), [colors]);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [selectedTab, setSelectedTab] = useState('history');
+  const [selectedTab, setSelectedTab] = useState('pending');
   const [deposits, setDeposits] = useState([]);
+  const [actionLoading, setActionLoading] = useState(null);
+
+  const isAdmin = (groupData?.role || 'member') === 'admin';
+  const myPersonId = String(user?.person_id || user?.id || '');
 
   const getIconForMethod = useCallback((method) => {
     switch (method) {
@@ -48,37 +44,82 @@ const DepositsScreen = ({ route }) => {
   }, []);
 
   const normalizeDeposit = useCallback((item) => {
-    const type = (item?.type || item?.deposit_type || 'request').toLowerCase();
-    const method = (item?.method || item?.deposit_type || 'bank_transfer').toLowerCase();
+    // deposit_type from API (CASH, BANK_TRANSFER, etc.) maps to method
+    const rawDepositType = (item?.deposit_type || '').toUpperCase();
+    const method = rawDepositType
+      ? rawDepositType.toLowerCase()
+      : (item?.method || 'bank_transfer').toLowerCase();
+
+    // derive display type from description prefix or fallback to 'request'
+    const desc = (item?.description || '').toUpperCase();
+    let type = 'request';
+    if (desc.startsWith('DEPOSIT:')) type = 'deposit';
+    else if (desc.startsWith('WITHDRAWAL:')) type = 'withdrawal';
+
+    // map API status APPROVED → completed, REJECTED → failed
+    const rawStatus = (item?.status || 'pending').toUpperCase();
+    const status =
+      rawStatus === 'APPROVED' ? 'completed' :
+      rawStatus === 'REJECTED' ? 'failed' :
+      rawStatus.toLowerCase();
+
+    const senderName =
+      item?.sender?.fullname || item?.sender?.username ||
+      item?.sender?.person?.fullname || item?.sender?.person?.username ||
+      item?.sender_person?.fullname || item?.sender_person?.username ||
+      item?.sender_name || item?.created_by_name ||
+      item?.from || 'You';
+
+    const receiverName =
+      item?.receiver?.fullname || item?.receiver?.username ||
+      item?.receiver?.person?.fullname || item?.receiver?.person?.username ||
+      item?.receiver_person?.fullname || item?.receiver_person?.username ||
+      item?.receiver_name || item?.to ||
+      (type === 'withdrawal' ? 'Member' : 'Group Admin');
+
     return {
-      id: item?.id ?? item?.deposit_id ?? Date.now(),
+      id: item?.id ?? item?.deposit_id ?? item?.request_id ?? null,
       type,
-      from: item?.from || item?.sender_name || item?.created_by_name || 'You',
-      to: item?.to || item?.receiver_name || 'Group Fund',
+      from: senderName,
+      to: receiverName,
       amount: Number(item?.amount || 0),
       date: item?.date || item?.created_at || item?.createdAt || new Date().toISOString(),
-      status: (item?.status || 'pending').toLowerCase(),
+      status,
       method,
-      note: item?.description || item?.note || 'Deposit request',
+      note: (item?.description || item?.note || 'Deposit request').replace(/^(DEPOSIT|WITHDRAWAL|REQUEST|DEPOSIT_REQUEST):\s*/i, ''),
       category: item?.category || 'General',
       icon: getIconForMethod(method),
       color: getColorForType(type),
       receipt: item?.attachment_url || item?.receipt || null,
+      senderId: String(item?.sender_id || item?.created_by || item?.sender?.id || item?.user_id || ''),
+      receiverId: String(item?.receiver_id || item?.receiver?.id || ''),
     };
   }, [getColorForType, getIconForMethod]);
 
-  const fetchDeposits = useCallback(async () => {
+  const fetchDeposits = useCallback(async (silent = false) => {
     if (!token) return;
-    setLoading(true);
+    const cacheKey = `deposits_${groupId || 'all'}`;
+
+    if (!silent) {
+      const cached = await cache.get(cacheKey);
+      if (cached) {
+        setDeposits(cached);
+        setLoading(false);
+      } else {
+        setLoading(true);
+      }
+    }
+
     try {
       const data = await depositsService.getDeposits(token, { groupId });
       const raw = data?.data?.deposits || data?.data || data?.deposits || data?.rows || [];
-      setDeposits(Array.isArray(raw) ? raw.map(normalizeDeposit) : []);
+      const normalized = Array.isArray(raw) ? raw.map(normalizeDeposit) : [];
+      setDeposits(normalized);
+      await cache.set(cacheKey, normalized);
     } catch (error) {
-      console.log('Fetch deposits error:', error.message);
-      Alert.alert('Error', 'Could not load deposits right now.');
+      if (!silent) Alert.alert('Error', 'Could not load deposits right now.');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [groupId, normalizeDeposit, token]);
 
@@ -98,7 +139,12 @@ const DepositsScreen = ({ route }) => {
     fetchDeposits();
   }, [fetchDeposits]);
 
-  const balanceSummary = deposits.reduce((summary, deposit) => {
+  // Members can only see their own deposits; admins see all
+  const visibleDeposits = isAdmin
+    ? deposits
+    : deposits.filter(d => d.senderId === myPersonId || d.receiverId === myPersonId);
+
+  const balanceSummary = visibleDeposits.reduce((summary, deposit) => {
     if (deposit.type === 'deposit') {
       summary.totalDeposits += deposit.amount;
     } else if (deposit.type === 'withdrawal') {
@@ -113,9 +159,39 @@ const DepositsScreen = ({ route }) => {
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await fetchDeposits();
+    await fetchDeposits(true);
     setRefreshing(false);
   }, [fetchDeposits]);
+
+  const handleDepositStatusUpdate = useCallback(async (depositId, newStatus) => {
+    if (!depositId) {
+      Alert.alert('Error', 'Invalid deposit — cannot update status. Please refresh and try again.');
+      return;
+    }
+    setActionLoading(depositId);
+    try {
+      await depositsService.updateDepositStatus(token, depositId, newStatus);
+      setDeposits(prev => prev.map(d => {
+        if (String(d.id) !== String(depositId)) return d;
+        return {
+          ...d,
+          status: newStatus === 'APPROVED' ? 'completed' : 'failed',
+        };
+      }));
+    } catch (err) {
+      const msg = err.message || '';
+      if (msg.toLowerCase().includes('not found')) {
+        Alert.alert(
+          'Cannot Update',
+          'This deposit could not be found. It may have been created with an incorrect receiver. Ask the member to resubmit the deposit.',
+        );
+      } else {
+        Alert.alert('Error', msg || 'Could not update deposit status.');
+      }
+    } finally {
+      setActionLoading(null);
+    }
+  }, [token]);
 
   const formatDate = useCallback((dateString) => {
     const date = new Date(dateString);
@@ -153,9 +229,9 @@ const DepositsScreen = ({ route }) => {
     }
   }, []);
 
-  const filteredDeposits = deposits.filter(deposit => {
+  const filteredDeposits = visibleDeposits.filter(deposit => {
     if (selectedTab === 'all') return true;
-    if (selectedTab === 'history') return deposit.status === 'completed';
+    if (selectedTab === 'history') return deposit.status === 'completed' || deposit.status === 'failed';
     if (selectedTab === 'requests') return deposit.type === 'request';
     if (selectedTab === 'pending') return deposit.status === 'pending';
     return true;
@@ -173,7 +249,7 @@ const DepositsScreen = ({ route }) => {
     <View style={styles.balanceCard}>
       <View style={styles.balanceHeader}>
         <View style={styles.balanceTitle}>
-          <Ionicons name="wallet" size={20} color="#06b6d4" />
+          <Ionicons name="wallet" size={20} color={colors.primary} />
           <Text style={styles.balanceHeaderText}>Deposit Summary</Text>
         </View>
         <TouchableOpacity 
@@ -181,7 +257,7 @@ const DepositsScreen = ({ route }) => {
           onPress={() => Alert.alert('Balance Details', 'Detailed deposit breakdown coming soon!')}
         >
           <Text style={styles.detailsButtonText}>Details</Text>
-          <Ionicons name="chevron-forward" size={14} color="#06b6d4" />
+          <Ionicons name="chevron-forward" size={14} color={colors.primary} />
         </TouchableOpacity>
       </View>
 
@@ -221,29 +297,29 @@ const DepositsScreen = ({ route }) => {
 
   const renderFilterChips = useCallback(() => {
     const filterOptions = [
-      { 
-        key: 'all', 
-        label: 'All', 
-        icon: 'list', 
-        count: deposits.length 
+      {
+        key: 'all',
+        label: 'All',
+        icon: 'list',
+        count: visibleDeposits.length
       },
-      { 
-        key: 'history', 
-        label: 'Completed', 
-        icon: 'checkmark-circle', 
-        count: deposits.filter(d => d.status === 'completed').length 
+      {
+        key: 'history',
+        label: 'Completed',
+        icon: 'checkmark-circle',
+        count: visibleDeposits.filter(d => d.status === 'completed').length
       },
-      { 
-        key: 'requests', 
-        label: 'Requests', 
-        icon: 'mail', 
-        count: deposits.filter(d => d.type === 'request').length 
+      {
+        key: 'requests',
+        label: 'Requests',
+        icon: 'mail',
+        count: visibleDeposits.filter(d => d.type === 'request').length
       },
-      { 
-        key: 'pending', 
-        label: 'Pending', 
-        icon: 'time', 
-        count: deposits.filter(d => d.status === 'pending').length 
+      {
+        key: 'pending',
+        label: 'Pending',
+        icon: 'time',
+        count: visibleDeposits.filter(d => d.status === 'pending').length
       }
     ];
 
@@ -298,7 +374,7 @@ const DepositsScreen = ({ route }) => {
       <View style={styles.depositDetails}>
         <View style={styles.detailsLeft}>
           <Text style={styles.personName} numberOfLines={1}>
-            {item.from} → {item.to}
+            {item.senderId === myPersonId ? 'You' : item.from} → {item.receiverId === myPersonId ? 'You' : item.to}
           </Text>
           <Text style={styles.depositDate}>
             {formatDate(item.date)}
@@ -318,22 +394,48 @@ const DepositsScreen = ({ route }) => {
         <View style={styles.typeTag}>
           <Text style={styles.typeText}>{item.type.toUpperCase()}</Text>
         </View>
-        
-        <TouchableOpacity 
-          style={styles.actionButton}
-          onPress={() => navigation.navigate('ReceiptView', { deposit: item })}
-        >
-          <Ionicons name="receipt" size={16} color="#06b6d4" />
-          <Text style={styles.actionButtonText}>Receipt</Text>
-        </TouchableOpacity>
+
+        <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+          {isAdmin && item.status === 'pending' && item.id && (
+            <>
+              <TouchableOpacity
+                style={[styles.actionButton, { backgroundColor: colors.successLight }]}
+                onPress={() => handleDepositStatusUpdate(item.id, 'APPROVED')}
+                disabled={actionLoading === item.id}
+              >
+                {actionLoading === item.id
+                  ? <ActivityIndicator size="small" color="#10b981" />
+                  : <><Ionicons name="checkmark" size={16} color="#10b981" /><Text style={[styles.actionButtonText, { color: '#10b981' }]}>Approve</Text></>
+                }
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.actionButton, { backgroundColor: colors.errorLight }]}
+                onPress={() => handleDepositStatusUpdate(item.id, 'REJECTED')}
+                disabled={actionLoading === item.id}
+              >
+                <Ionicons name="close" size={16} color="#ef4444" />
+                <Text style={[styles.actionButtonText, { color: '#ef4444' }]}>Reject</Text>
+              </TouchableOpacity>
+            </>
+          )}
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => navigation.navigate('ReceiptView', { deposit: item })}
+          >
+            <Ionicons name="receipt" size={16} color={colors.primary} />
+            <Text style={styles.actionButtonText}>Receipt</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     </Pressable>
-  ), [formatDate, formatAmount, getStatusColor]);
+  ), [formatDate, formatAmount, getStatusColor, isAdmin, actionLoading, handleDepositStatusUpdate]);
 
   const renderListHeader = useCallback(() => (
     <View>
       {renderBalanceCard()}
-      {renderFilterChips()}
+      <View style={{ marginBottom: 12 }}>
+        {renderFilterChips()}
+      </View>
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>
           {selectedTab === 'all' ? 'All Deposits' : 
@@ -347,6 +449,7 @@ const DepositsScreen = ({ route }) => {
       </View>
     </View>
   ), [renderBalanceCard, renderFilterChips, filteredDeposits.length, selectedTab]);
+
 
   const renderEmptyState = useCallback(() => {
     const getEmptyStateContent = () => {
@@ -386,8 +489,8 @@ const DepositsScreen = ({ route }) => {
               selectedTab === 'pending' ? 'time-outline' :
               'wallet-outline'
             } 
-            size={48} 
-            color="#9ca3af" 
+            size={48}
+            color={colors.textMuted}
           />
         </View>
         <Text style={styles.emptyTitle}>{content.title}</Text>
@@ -409,8 +512,8 @@ const DepositsScreen = ({ route }) => {
   const keyExtractor = useCallback((item) => item.id.toString(), []);
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#f8fffe" />
+    <SafeAreaView style={styles.container} edges={['bottom']}>
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
       
       {/* Header */}
       <View style={styles.header}>
@@ -419,14 +522,14 @@ const DepositsScreen = ({ route }) => {
           onPress={() => navigation.goBack()}
           activeOpacity={0.7}
         >
-          <Ionicons name="arrow-back" size={24} color="#0f172a" />
+          <Ionicons name="arrow-back" size={24} color={colors.text} />
         </TouchableOpacity>
         
         <View style={styles.headerContent}>
           <Text style={styles.title}>Deposits</Text>
           <View style={styles.groupInfo}>
             {groupData && (
-              <View style={[styles.groupIndicator, { backgroundColor: groupData.color || '#06b6d4' }]} />
+              <View style={[styles.groupIndicator, { backgroundColor: groupData.color || colors.primary }]} />
             )}
             <Text style={styles.subtitle}>{groupName}</Text>
           </View>
@@ -435,7 +538,7 @@ const DepositsScreen = ({ route }) => {
         <View style={styles.headerActions}>
           {groupData && (
             <View style={styles.memberCount}>
-              <Ionicons name="people" size={14} color="#64748b" />
+              <Ionicons name="people" size={14} color={colors.textSecondary} />
               <Text style={styles.memberCountText}>{groupData.members}</Text>
             </View>
           )}
@@ -472,10 +575,10 @@ const DepositsScreen = ({ route }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (colors) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8fffe',
+    backgroundColor: colors.background,
   },
   
   // Header
@@ -484,9 +587,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 20,
     paddingVertical: 16,
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
     borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
+    borderBottomColor: colors.cardBorder,
   },
   backButton: {
     padding: 4,
@@ -498,7 +601,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 24,
     fontWeight: '800',
-    color: '#0f172a',
+    color: colors.text,
     letterSpacing: -0.5,
   },
   groupInfo: {
@@ -514,7 +617,7 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     fontSize: 14,
-    color: '#64748b',
+    color: colors.textSecondary,
     fontWeight: '600',
   },
   headerActions: {
@@ -526,22 +629,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: '#f1f5f9',
+    backgroundColor: colors.surfaceAlt,
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
   },
   memberCountText: {
     fontSize: 12,
-    color: '#64748b',
+    color: colors.textSecondary,
     fontWeight: '600',
   },
   addButton: {
-    backgroundColor: '#06b6d4',
+    backgroundColor: colors.primary,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 8,
-    shadowColor: '#06b6d4',
+    shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
     shadowRadius: 4,
@@ -560,17 +663,17 @@ const styles = StyleSheet.create({
 
   // Balance Card
   balanceCard: {
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
     borderRadius: 16,
     padding: 20,
     marginBottom: 12,
-    shadowColor: '#06b6d4',
+    shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.08,
     shadowRadius: 16,
     elevation: 4,
     borderWidth: 1,
-    borderColor: '#e0f2fe',
+    borderColor: colors.primaryBorder,
   },
   balanceHeader: {
     flexDirection: 'row',
@@ -586,7 +689,7 @@ const styles = StyleSheet.create({
   balanceHeaderText: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#0f172a',
+    color: colors.text,
   },
   detailsButton: {
     flexDirection: 'row',
@@ -594,13 +697,13 @@ const styles = StyleSheet.create({
     gap: 4,
     paddingHorizontal: 10,
     paddingVertical: 6,
-    backgroundColor: '#f0f9ff',
+    backgroundColor: colors.primaryLight,
     borderRadius: 8,
   },
   detailsButtonText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#06b6d4',
+    color: colors.primary,
   },
   balanceGrid: {
     flexDirection: 'row',
@@ -608,7 +711,7 @@ const styles = StyleSheet.create({
   },
   balanceItem: {
     flex: 1,
-    backgroundColor: '#f8fafc',
+    backgroundColor: colors.surfaceAlt,
     borderRadius: 12,
     padding: 12,
     minHeight: 80,
@@ -621,7 +724,7 @@ const styles = StyleSheet.create({
   },
   balanceLabel: {
     fontSize: 10,
-    color: '#64748b',
+    color: colors.textSecondary,
     fontWeight: '600',
     flexShrink: 1,
   },
@@ -653,23 +756,25 @@ const styles = StyleSheet.create({
   filterScrollContainer: {
     paddingHorizontal: 0,
     gap: 12,
+    paddingBottom: 8,
+    marginBottom: 12,
   },
   filterChip: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 10,
-    backgroundColor: '#f8fafc',
+    backgroundColor: colors.surfaceAlt,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: '#e2e8f0',
+    borderColor: colors.cardBorderMedium,
     gap: 8,
     marginRight: 12,
   },
   activeFilterChip: {
-    backgroundColor: '#06b6d4',
-    borderColor: '#06b6d4',
-    shadowColor: '#06b6d4',
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+    shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
     shadowRadius: 4,
@@ -678,13 +783,13 @@ const styles = StyleSheet.create({
   filterChipText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#64748b',
+    color: colors.textSecondary,
   },
   activeFilterChipText: {
     color: '#ffffff',
   },
   filterChipBadge: {
-    backgroundColor: '#e2e8f0',
+    backgroundColor: colors.surfaceAlt,
     borderRadius: 10,
     paddingHorizontal: 6,
     paddingVertical: 2,
@@ -697,7 +802,7 @@ const styles = StyleSheet.create({
   filterChipBadgeText: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#64748b',
+    color: colors.textSecondary,
   },
   activeFilterChipBadgeText: {
     color: '#ffffff',
@@ -713,17 +818,17 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#0f172a',
+    color: colors.text,
   },
   depositCount: {
     fontSize: 14,
-    color: '#64748b',
+    color: colors.textSecondary,
     fontWeight: '500',
   },
 
   // Deposit Card - Improved Design
   depositCard: {
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
     borderRadius: 16,
     padding: 16,
     marginBottom: 12,
@@ -733,7 +838,7 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 2,
     borderWidth: 1,
-    borderColor: '#f1f5f9',
+    borderColor: colors.cardBorder,
   },
   depositCardPressed: {
     transform: [{ scale: 0.98 }],
@@ -761,13 +866,13 @@ const styles = StyleSheet.create({
   depositTitle: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#0f172a',
+    color: colors.text,
     marginBottom: 2,
     lineHeight: 20,
   },
   depositCategory: {
     fontSize: 13,
-    color: '#64748b',
+    color: colors.textSecondary,
     fontWeight: '500',
   },
   amountContainer: {
@@ -786,7 +891,7 @@ const styles = StyleSheet.create({
   },
   statusText: {
     fontSize: 11,
-    color: '#64748b',
+    color: colors.textSecondary,
     fontWeight: '600',
     textTransform: 'capitalize',
   },
@@ -798,7 +903,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 8,
     paddingHorizontal: 12,
-    backgroundColor: '#f8fafc',
+    backgroundColor: colors.surfaceAlt,
     borderRadius: 8,
     marginBottom: 12,
   },
@@ -811,24 +916,24 @@ const styles = StyleSheet.create({
   personName: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#0f172a',
+    color: colors.text,
     marginBottom: 2,
   },
   depositDate: {
     fontSize: 12,
-    color: '#64748b',
+    color: colors.textSecondary,
     fontWeight: '500',
   },
   methodLabel: {
     fontSize: 11,
-    color: '#64748b',
+    color: colors.textSecondary,
     fontWeight: '500',
     marginBottom: 2,
   },
   methodText: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#06b6d4',
+    color: colors.primary,
   },
   
   // Action Row
@@ -838,14 +943,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   typeTag: {
-    backgroundColor: '#f1f5f9',
+    backgroundColor: colors.surfaceAlt,
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
   },
   typeText: {
     fontSize: 11,
-    color: '#64748b',
+    color: colors.textSecondary,
     fontWeight: '700',
   },
   actionButton: {
@@ -854,13 +959,13 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingHorizontal: 12,
     paddingVertical: 6,
-    backgroundColor: '#f0f9ff',
+    backgroundColor: colors.primaryLight,
     borderRadius: 8,
   },
   actionButtonText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#06b6d4',
+    color: colors.primary,
   },
 
   // Empty State
@@ -873,7 +978,7 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: '#f1f5f9',
+    backgroundColor: colors.surfaceAlt,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 20,
@@ -881,19 +986,19 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#0f172a',
+    color: colors.text,
     marginBottom: 8,
     textAlign: 'center',
   },
   emptySubtitle: {
     fontSize: 16,
-    color: '#64748b',
+    color: colors.textSecondary,
     textAlign: 'center',
     lineHeight: 24,
     marginBottom: 24,
   },
   clearFilterButton: {
-    backgroundColor: '#06b6d4',
+    backgroundColor: colors.primary,
     paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: 8,

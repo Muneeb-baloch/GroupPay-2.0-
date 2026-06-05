@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -12,7 +12,8 @@ import {
   Image,
   Dimensions,
   KeyboardAvoidingView,
-  Platform
+  Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -20,66 +21,31 @@ import * as ImagePicker from 'expo-image-picker';
 import PillSelector from '../components/PillSelector';
 import ActionFooter from '../components/ActionFooter';
 import { createUniqueId } from '../utils/helpers';
+import { expensesService } from '../services/expensesService';
+import { filesService } from '../services/filesService';
+import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 
 const { width } = Dimensions.get('window');
 
-const INITIAL_TRANSACTIONS = [
-  {
-    id: 1,
-    title: 'Monthly Salary',
-    type: 'Income',
-    amount: 85000,
-    category: 'Salary',
-    dateTime: '01/05/2026, 09:00',
-    dateStamp: new Date(2026, 4, 1),
-    note: 'Primary company monthly salary payout',
-    attachment: null
-  },
-  {
-    id: 2,
-    title: 'Tummy Cafe Diner',
-    type: 'Expense',
-    amount: 2450,
-    category: 'Food',
-    dateTime: '21/05/2026, 20:30',
-    dateStamp: new Date(2026, 4, 21),
-    note: 'Outing dinner with teammates',
-    attachment: null
-  },
-  {
-    id: 3,
-    title: 'Fuel refuel',
-    type: 'Expense',
-    amount: 3500,
-    category: 'Travel',
-    dateTime: '18/05/2026, 12:45',
-    dateStamp: new Date(2026, 4, 18),
-    note: 'Car tank refill petrol',
-    attachment: null
-  },
-  {
-    id: 4,
-    title: 'Freelance Project',
-    type: 'Income',
-    amount: 15000,
-    category: 'Freelance',
-    dateTime: '15/05/2026, 17:00',
-    dateStamp: new Date(2026, 4, 15),
-    note: 'Payment for landing page development',
-    attachment: null
-  },
-  {
-    id: 5,
-    title: 'New Jeans',
-    type: 'Expense',
-    amount: 4800,
-    category: 'Shopping',
-    dateTime: '10/05/2026, 15:30',
-    dateStamp: new Date(2026, 4, 10),
-    note: 'Shopping at Centaurus Mall',
-    attachment: null
-  }
-];
+// Normalize a raw API expense into the format the UI expects
+const normalizeExpense = (e) => {
+  const apiType = (e.type || '').toUpperCase();
+  const d = new Date(e.date_time || e.created_at || Date.now());
+  const pad = (n) => String(n).padStart(2, '0');
+  const dateTime = `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}, ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return {
+    id: e.id || e.expense_id,
+    title: e.location || e.note || 'Expense',
+    type: apiType === 'CREDIT' ? 'Income' : 'Expense',
+    amount: parseFloat(e.amount || 0),
+    category: 'Other',
+    dateTime,
+    dateStamp: d,
+    note: e.note || '',
+    attachment: (e.img_url && e.img_url.length > 0) ? e.img_url[0] : null,
+  };
+};
 
 const CATEGORIES = [
   { name: 'Salary', icon: 'cash-outline', color: '#10b981' },
@@ -90,19 +56,29 @@ const CATEGORIES = [
   { name: 'Other', icon: 'grid-outline', color: '#64748b' }
 ];
 
+const _now = new Date();
+const _pad = (n) => String(n).padStart(2, '0');
+const _curMonth = _pad(_now.getMonth() + 1);
+const _curYear  = String(_now.getFullYear());
+const _lastDay  = _pad(new Date(_now.getFullYear(), _now.getMonth() + 1, 0).getDate());
+
 const ExpensesScreen = ({ navigation, route }) => {
-  const [transactions, setTransactions] = useState(INITIAL_TRANSACTIONS);
+  const { token } = useAuth();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => getStyles(colors), [colors]);
+  const [transactions, setTransactions] = useState([]);
+  const [loadingList, setLoadingList] = useState(true);
   const [activeTimeframe, setActiveTimeframe] = useState('Monthly');
   const [filterType, setFilterType] = useState('All');
 
-  // Filter Configuration Dates
-  const [fromDay, setFromDay] = useState('01');
-  const [fromMonth, setFromMonth] = useState('05');
-  const [fromYear, setFromYear] = useState('2026');
+  // Filter Configuration Dates — default to current month
+  const [fromDay,   setFromDay]   = useState('01');
+  const [fromMonth, setFromMonth] = useState(_curMonth);
+  const [fromYear,  setFromYear]  = useState(_curYear);
 
-  const [toDay, setToDay] = useState('21');
-  const [toMonth, setToMonth] = useState('05');
-  const [toYear, setToYear] = useState('2026');
+  const [toDay,   setToDay]   = useState(_lastDay);
+  const [toMonth, setToMonth] = useState(_curMonth);
+  const [toYear,  setToYear]  = useState(_curYear);
 
   // Modal Screen Triggers
   const [filterModalVisible, setFilterModalVisible] = useState(false);
@@ -124,6 +100,31 @@ const ExpensesScreen = ({ navigation, route }) => {
   const [pickerYear, setPickerYear] = useState(new Date().getFullYear().toString());
   const [pickerHour, setPickerHour] = useState('20');
   const [pickerMin, setPickerMin] = useState('45');
+
+  const [apiUnavailable, setApiUnavailable] = useState(false);
+
+  const fetchExpenses = useCallback(async () => {
+    if (!token) return;
+    setLoadingList(true);
+    try {
+      const data = await expensesService.getExpenses(token, { pageSize: 100 });
+      const raw =
+        data?.data?.expenses ||
+        data?.data?.data     ||
+        data?.data           ||
+        data?.expenses       ||
+        data?.rows           ||
+        [];
+      setTransactions(Array.isArray(raw) ? raw.map(normalizeExpense) : []);
+      setApiUnavailable(false);
+    } catch {
+      setApiUnavailable(true);
+    } finally {
+      setLoadingList(false);
+    }
+  }, [token]);
+
+  useEffect(() => { fetchExpenses(); }, [fetchExpenses]);
 
   useEffect(() => {
     if (route?.params?.openAddSheet) {
@@ -182,8 +183,8 @@ const ExpensesScreen = ({ navigation, route }) => {
   };
 
   const handleResetFilters = () => {
-    setFromDay('01'); setFromMonth('05'); setFromYear('2026');
-    setToDay('21'); setToMonth('05'); setToYear('2026');
+    setFromDay('01'); setFromMonth(_curMonth); setFromYear(_curYear);
+    setToDay(_lastDay); setToMonth(_curMonth); setToYear(_curYear);
     setFilterType('All');
   };
 
@@ -213,26 +214,56 @@ const ExpensesScreen = ({ navigation, route }) => {
     ]);
   };
 
-  const handleAddExpense = () => {
+  const handleAddExpense = async () => {
     const amtNum = parseFloat(amount);
     if (!amtNum || amtNum <= 0) return Alert.alert('Error', 'Please enter a valid amount.');
     if (!title.trim()) return Alert.alert('Error', 'Please enter title/location.');
 
-    const newTx = {
-      id: createUniqueId('tx'),
-      title: title.trim(),
-      type: expenseType,
-      amount: amtNum,
-      category: selectedCategory.name,
-      dateTime: expenseDateTime,
-      dateStamp: new Date(),
-      note: note.trim(),
-      attachment: attachment
-    };
+    // Build ISO datetime from picker values
+    const [datePart, timePart] = expenseDateTime.split(', ');
+    const [dd, mm, yyyy] = (datePart || '').split('/');
+    const [hh, min] = (timePart || '00:00').split(':');
+    const isoDate = `${yyyy}-${mm}-${dd}T${hh}:${min}:00.000Z`;
 
-    setTransactions([newTx, ...transactions]);
+    try {
+      let imgUrls = [];
+      if (attachment) {
+        try {
+          const up = await filesService.uploadFile(token, { uri: attachment }, 'expenses');
+          const url = up?.data?.url || up?.url || up?.file_url || up?.path || null;
+          if (url) imgUrls = [url];
+        } catch {
+          // non-fatal — save without image
+        }
+      }
+
+      const response = await expensesService.createExpense(token, {
+        amount: amtNum,
+        type: expenseType === 'Income' ? 'CREDIT' : 'DEBIT',
+        location: title.trim(),
+        note: note.trim(),
+        date_time: isoDate,
+        img_url: imgUrls,
+      });
+
+      const created = response?.data?.expense || response?.data || response?.expense || response;
+      const newTx = normalizeExpense({ ...created, location: title.trim(), note: note.trim(), amount: amtNum });
+      newTx.category = selectedCategory.name;
+
+      setTransactions(prev => [newTx, ...prev]);
+    } catch (err) {
+      const msg = err?.message || '';
+      const isServerTableBug = msg.toLowerCase().includes('table') || msg.toLowerCase().includes('schema');
+      Alert.alert(
+        'Server Error',
+        isServerTableBug
+          ? 'The expenses feature is not available yet on the server. Please contact support.'
+          : msg || 'Could not save expense. Please try again.'
+      );
+      return;
+    }
+
     setAddModalVisible(false);
-
     setAmount('');
     setTitle('');
     setNote('');
@@ -250,10 +281,16 @@ const ExpensesScreen = ({ navigation, route }) => {
         {
           text: 'Delete',
           style: 'destructive',
-          onPress: () => {
-            setTransactions(transactions.filter(t => t.id !== id));
-          }
-        }
+          onPress: async () => {
+            setTransactions(prev => prev.filter(t => t.id !== id));
+            try {
+              await expensesService.deleteExpense(token, id);
+            } catch {
+              // revert on failure
+              fetchExpenses();
+            }
+          },
+        },
       ]
     );
   };
@@ -268,11 +305,13 @@ const ExpensesScreen = ({ navigation, route }) => {
     return cat ? cat.icon : 'wallet-outline';
   };
 
-  const isFilterActive = filterType !== 'All' || fromDay !== '01' || toDay !== '21';
+  const isFilterActive = filterType !== 'All' ||
+    fromDay !== '01' || fromMonth !== _curMonth || fromYear !== _curYear ||
+    toDay !== _lastDay || toMonth !== _curMonth || toYear !== _curYear;
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
-      <StatusBar barStyle="dark-content" backgroundColor="#f8fffe" />
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
 
       <ScrollView
         style={styles.mainScrollView}
@@ -301,7 +340,7 @@ const ExpensesScreen = ({ navigation, route }) => {
               <Ionicons
                 name={isFilterActive ? "funnel" : "funnel-outline"}
                 size={19}
-                color={isFilterActive ? "#06b6d4" : "#64748b"}
+                color={isFilterActive ? colors.primary : colors.textSecondary}
               />
             </TouchableOpacity>
 
@@ -339,13 +378,13 @@ const ExpensesScreen = ({ navigation, route }) => {
 
         {/* BALANCES DASHBOARD */}
         <View style={styles.statsCard}>
-          <View style={[styles.statBox, { borderRightWidth: 1, borderRightColor: '#f1f5f9' }]}>
+          <View style={[styles.statBox, { borderRightWidth: 1, borderRightColor: colors.cardBorder }]}>
             <Text style={styles.statLabel}>Net Balance</Text>
             <Text style={[styles.statValue, { color: stats.net >= 0 ? '#10b981' : '#ef4444' }]}>
               {stats.net >= 0 ? '+' : ''}Rs {stats.net.toLocaleString()}
             </Text>
           </View>
-          <View style={[styles.statBox, { borderRightWidth: 1, borderRightColor: '#f1f5f9' }]}>
+          <View style={[styles.statBox, { borderRightWidth: 1, borderRightColor: colors.cardBorder }]}>
             <Text style={styles.statLabel}>Income</Text>
             <Text style={[styles.statValue, { color: '#06b6d4' }]}>
               Rs {stats.income.toLocaleString()}
@@ -371,7 +410,22 @@ const ExpensesScreen = ({ navigation, route }) => {
           )}
         </View>
 
-        {filteredTransactions.length === 0 ? (
+        {loadingList ? (
+          <View style={styles.emptyStateCard}>
+            <ActivityIndicator size="large" color="#06b6d4" />
+            <Text style={[styles.emptyStateTitle, { marginTop: 12 }]}>Loading expenses...</Text>
+          </View>
+        ) : apiUnavailable ? (
+          <View style={styles.emptyStateCard}>
+            <View style={styles.emptyStateIconCircle}>
+              <Ionicons name="cloud-offline-outline" size={30} color="#f59e0b" />
+            </View>
+            <Text style={styles.emptyStateTitle}>Feature Unavailable</Text>
+            <Text style={styles.emptyStateSubtitle}>
+              Personal expenses are not available yet. Pull down to retry.
+            </Text>
+          </View>
+        ) : filteredTransactions.length === 0 ? (
           <View style={styles.emptyStateCard}>
             <View style={styles.emptyStateIconCircle}>
               <Ionicons name="wallet-outline" size={30} color="#06b6d4" />
@@ -433,7 +487,7 @@ const ExpensesScreen = ({ navigation, route }) => {
           <View style={styles.addSheet}>
             <View style={styles.sheetHeader}>
               <TouchableOpacity onPress={() => setFilterModalVisible(false)} activeOpacity={0.7} style={{ padding: 4 }}>
-                <Ionicons name="close" size={22} color="#0f172a" />
+                <Ionicons name="close" size={22} color={colors.text} />
               </TouchableOpacity>
               <Text style={styles.sheetTitle}>Interactive Configurations</Text>
               <TouchableOpacity onPress={handleResetFilters} activeOpacity={0.7}>
@@ -503,7 +557,7 @@ const ExpensesScreen = ({ navigation, route }) => {
             <View style={styles.addSheet}>
               <View style={styles.sheetHeader}>
                 <TouchableOpacity onPress={() => setAddModalVisible(false)} activeOpacity={0.7} style={{ padding: 4 }}>
-                  <Ionicons name="close" size={22} color="#0f172a" />
+                  <Ionicons name="close" size={22} color={colors.text} />
                 </TouchableOpacity>
                 <Text style={styles.sheetTitle}>Add Personal Transaction</Text>
                 <View style={{ width: 32 }} />
@@ -522,7 +576,7 @@ const ExpensesScreen = ({ navigation, route }) => {
                     <TextInput
                       style={styles.modalAmountInput}
                       placeholder="0.00"
-                      placeholderTextColor="#cbd5e1"
+                      placeholderTextColor={colors.textMuted}
                       keyboardType="numeric"
                       value={amount}
                       onChangeText={setAmount}
@@ -543,19 +597,19 @@ const ExpensesScreen = ({ navigation, route }) => {
 
                 <View style={styles.modalFormCard}>
                   <View style={styles.modalFormRow}>
-                    <Ionicons name="bookmark-outline" size={16} color="#64748b" style={{ marginRight: 10 }} />
+                    <Ionicons name="bookmark-outline" size={16} color={colors.textSecondary} style={{ marginRight: 10 }} />
                     <Text style={styles.modalRowLabel}>Title</Text>
                     <TextInput
                       style={styles.modalRowInput}
                       placeholder="e.g. Grocery Store, Pay"
-                      placeholderTextColor="#94a3b8"
+                      placeholderTextColor={colors.textMuted}
                       value={title}
                       onChangeText={setTitle}
                     />
                   </View>
 
                   <View style={[styles.modalFormRow, { flexWrap: 'wrap', height: 'auto', paddingVertical: 12 }]}>
-                    <Ionicons name="grid-outline" size={16} color="#64748b" style={{ marginRight: 10, marginTop: 4 }} />
+                    <Ionicons name="grid-outline" size={16} color={colors.textSecondary} style={{ marginRight: 10, marginTop: 4 }} />
                     <Text style={styles.modalRowLabel}>Category</Text>
                     <PillSelector
                       selectedKey={selectedCategory.name}
@@ -574,20 +628,20 @@ const ExpensesScreen = ({ navigation, route }) => {
                     onPress={() => setDateModalVisible(true)}
                     activeOpacity={0.7}
                   >
-                    <Ionicons name="time-outline" size={16} color="#64748b" style={{ marginRight: 10 }} />
+                    <Ionicons name="time-outline" size={16} color={colors.textSecondary} style={{ marginRight: 10 }} />
                     <Text style={styles.modalRowLabel}>Date & Time</Text>
                     <Text style={styles.modalRowValue}>{expenseDateTime}</Text>
-                    <Ionicons name="chevron-forward" size={14} color="#94a3b8" />
+                    <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
                   </TouchableOpacity>
 
                   <View style={[styles.modalFormRow, { borderBottomWidth: 0, alignItems: 'flex-start', paddingVertical: 12 }]}>
-                    <Ionicons name="document-text-outline" size={16} color="#64748b" style={{ marginRight: 10, marginTop: 2 }} />
+                    <Ionicons name="document-text-outline" size={16} color={colors.textSecondary} style={{ marginRight: 10, marginTop: 2 }} />
                     <View style={{ flex: 1 }}>
                       <Text style={styles.notesLabel}>Note Description</Text>
                       <TextInput
                         style={styles.notesTextInput}
                         placeholder="Add specific description flags..."
-                        placeholderTextColor="#94a3b8"
+                        placeholderTextColor={colors.textMuted}
                         value={note}
                         onChangeText={setNote}
                         multiline
@@ -642,7 +696,7 @@ const ExpensesScreen = ({ navigation, route }) => {
             <View style={styles.sheetHeader}>
               <Text style={styles.sheetTitle}>Select Expense Date</Text>
               <TouchableOpacity onPress={() => setDateModalVisible(false)} activeOpacity={0.7}>
-                <Ionicons name="close" size={22} color="#0f172a" />
+                <Ionicons name="close" size={22} color={colors.text} />
               </TouchableOpacity>
             </View>
             <View style={styles.pickerSection}>
@@ -676,10 +730,10 @@ const ExpensesScreen = ({ navigation, route }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (colors) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8fffe',
+    backgroundColor: colors.background,
   },
   mainScrollView: {
     flex: 1,
@@ -703,13 +757,13 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 26,
     fontWeight: '800',
-    color: '#0f172a',
+    color: colors.text,
     marginBottom: 2,
     letterSpacing: -0.5,
   },
   subtitle: {
     fontSize: 13,
-    color: '#64748b',
+    color: colors.textSecondary,
     fontWeight: '500',
   },
   headerActions: {
@@ -721,25 +775,25 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 12,
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#e2e8f0',
+    borderColor: colors.cardBorderMedium,
   },
   iconActionButtonActive: {
-    borderColor: '#06b6d4',
-    backgroundColor: '#ecfeff',
+    borderColor: colors.primary,
+    backgroundColor: colors.primaryLight,
   },
   createButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#06b6d4',
+    backgroundColor: colors.primary,
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: 12,
     gap: 4,
-    shadowColor: '#06b6d4',
+    shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
     shadowRadius: 6,
@@ -757,7 +811,7 @@ const styles = StyleSheet.create({
   },
   pillContainer: {
     flexDirection: 'row',
-    backgroundColor: '#f1f5f9',
+    backgroundColor: colors.surfaceAlt,
     borderRadius: 14,
     padding: 4,
   },
@@ -769,7 +823,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   pillItemActive: {
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
     shadowColor: '#0f172a',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.06,
@@ -779,20 +833,20 @@ const styles = StyleSheet.create({
   pillText: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#64748b',
+    color: colors.textSecondary,
   },
   pillTextActive: {
-    color: '#0f172a',
+    color: colors.text,
     fontWeight: '700',
   },
 
   // BOARD STATS
   statsCard: {
     flexDirection: 'row',
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#f1f5f9',
+    borderColor: colors.cardBorder,
     paddingVertical: 14,
     marginBottom: 16,
   },
@@ -804,7 +858,7 @@ const styles = StyleSheet.create({
   statLabel: {
     fontSize: 10,
     fontWeight: '700',
-    color: '#94a3b8',
+    color: colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
@@ -826,16 +880,16 @@ const styles = StyleSheet.create({
   dateLabel: {
     fontSize: 10,
     fontWeight: '700',
-    color: '#94a3b8',
+    color: colors.textMuted,
     textTransform: 'uppercase',
     marginBottom: 6,
   },
   datePickerInputGroup: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f8fafc',
+    backgroundColor: colors.surfaceAlt,
     borderWidth: 1,
-    borderColor: '#cbd5e1',
+    borderColor: colors.inputBorder,
     borderRadius: 8,
     paddingHorizontal: 8,
     height: 38,
@@ -845,25 +899,25 @@ const styles = StyleSheet.create({
     height: '100%',
     fontSize: 12,
     fontWeight: '600',
-    color: '#334155',
+    color: colors.text,
     textAlign: 'center',
     padding: 0,
   },
   dateSlash: {
     fontSize: 12,
-    color: '#94a3b8',
+    color: colors.textMuted,
     fontWeight: '600',
   },
   typesRow: {
     borderTopWidth: 1,
-    borderTopColor: '#f1f5f9',
+    borderTopColor: colors.cardBorder,
     paddingTop: 14,
     marginBottom: 20,
   },
   typeSelectorLabel: {
     fontSize: 10,
     fontWeight: '700',
-    color: '#94a3b8',
+    color: colors.textMuted,
     textTransform: 'uppercase',
     marginBottom: 8,
   },
@@ -873,29 +927,29 @@ const styles = StyleSheet.create({
   },
   typeSelectBtn: {
     flex: 1,
-    backgroundColor: '#f8fafc',
+    backgroundColor: colors.surfaceAlt,
     borderWidth: 1,
-    borderColor: '#cbd5e1',
+    borderColor: colors.inputBorder,
     borderRadius: 8,
     height: 36,
     alignItems: 'center',
     justifyContent: 'center',
   },
   typeSelectBtnActive: {
-    backgroundColor: '#ecfeff',
-    borderColor: '#06b6d4',
+    backgroundColor: colors.primaryLight,
+    borderColor: colors.primary,
   },
   typeSelectText: {
     fontSize: 12,
-    color: '#64748b',
+    color: colors.textSecondary,
     fontWeight: '600',
   },
   typeSelectTextActive: {
-    color: '#06b6d4',
+    color: colors.primary,
     fontWeight: '700',
   },
   applyFilterButton: {
-    backgroundColor: '#06b6d4',
+    backgroundColor: colors.primary,
     borderRadius: 10,
     height: 42,
     alignItems: 'center',
@@ -929,13 +983,13 @@ const styles = StyleSheet.create({
   transactionsTitle: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#0f172a',
+    color: colors.text,
   },
   transactionsContainer: {
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#f1f5f9',
+    borderColor: colors.cardBorder,
     paddingHorizontal: 14,
   },
   txRow: {
@@ -943,7 +997,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#f8fafc',
+    borderBottomColor: colors.cardBorder,
   },
   txAvatarCircle: {
     width: 34,
@@ -956,7 +1010,7 @@ const styles = StyleSheet.create({
   txTitleText: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#0f172a',
+    color: colors.text,
   },
   txMetaRow: {
     flexDirection: 'row',
@@ -975,7 +1029,7 @@ const styles = StyleSheet.create({
   },
   txDateText: {
     fontSize: 10,
-    color: '#94a3b8',
+    color: colors.textMuted,
     fontWeight: '500',
   },
   txAmountText: {
@@ -985,17 +1039,17 @@ const styles = StyleSheet.create({
   txTypeText: {
     fontSize: 8,
     fontWeight: '700',
-    color: '#94a3b8',
+    color: colors.textMuted,
     textTransform: 'uppercase',
     marginTop: 1,
   },
 
   // EMPTY LIST CONTROLS
   emptyStateCard: {
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#f1f5f9',
+    borderColor: colors.cardBorder,
     paddingVertical: 36,
     paddingHorizontal: 16,
     alignItems: 'center',
@@ -1005,7 +1059,7 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 16,
-    backgroundColor: '#ecfeff',
+    backgroundColor: colors.primaryLight,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 12,
@@ -1013,12 +1067,12 @@ const styles = StyleSheet.create({
   emptyStateTitle: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#0f172a',
+    color: colors.text,
     marginBottom: 4,
   },
   emptyStateSubtitle: {
     fontSize: 12,
-    color: '#64748b',
+    color: colors.textSecondary,
     textAlign: 'center',
     lineHeight: 16,
     paddingHorizontal: 16,
@@ -1033,10 +1087,10 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 16,
-    backgroundColor: '#06b6d4',
+    backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#06b6d4',
+    shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.25,
     shadowRadius: 6,
@@ -1051,7 +1105,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   addSheet: {
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     maxHeight: '88%',
@@ -1065,12 +1119,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
+    borderBottomColor: colors.cardBorder,
   },
   sheetTitle: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#0f172a',
+    color: colors.text,
   },
   sheetScroll: {
     flex: 1,
@@ -1083,16 +1137,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 16,
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#f1f5f9',
+    borderColor: colors.cardBorder,
     marginBottom: 14,
   },
   modalAmountLabel: {
     fontSize: 10,
     fontWeight: '700',
-    color: '#64748b',
+    color: colors.textSecondary,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     marginBottom: 4,
@@ -1105,21 +1159,21 @@ const styles = StyleSheet.create({
   modalAmountCurrency: {
     fontSize: 20,
     fontWeight: '800',
-    color: '#06b6d4',
+    color: colors.primary,
     marginRight: 4,
     marginTop: 2,
   },
   modalAmountInput: {
     fontSize: 28,
     fontWeight: '800',
-    color: '#0f172a',
+    color: colors.text,
     padding: 0,
     minWidth: 80,
     textAlign: 'center',
   },
   modalPillContainer: {
     flexDirection: 'row',
-    backgroundColor: '#f1f5f9',
+    backgroundColor: colors.surfaceAlt,
     borderRadius: 14,
     padding: 3,
     marginBottom: 14,
@@ -1131,7 +1185,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   modalPillActive: {
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.04,
@@ -1141,16 +1195,16 @@ const styles = StyleSheet.create({
   modalPillText: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#64748b',
+    color: colors.textSecondary,
   },
   modalPillTextActive: {
-    color: '#06b6d4',
+    color: colors.primary,
   },
   modalFormCard: {
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#f1f5f9',
+    borderColor: colors.cardBorder,
     paddingHorizontal: 14,
     marginBottom: 14,
   },
@@ -1159,18 +1213,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#f8fafc',
+    borderBottomColor: colors.cardBorder,
   },
   modalRowLabel: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#475569',
+    color: colors.textSecondary,
     width: 76,
   },
   modalRowInput: {
     flex: 1,
     fontSize: 12,
-    color: '#0f172a',
+    color: colors.text,
     fontWeight: '600',
     padding: 0,
     textAlign: 'right',
@@ -1178,7 +1232,7 @@ const styles = StyleSheet.create({
   modalRowValue: {
     flex: 1,
     fontSize: 12,
-    color: '#0f172a',
+    color: colors.text,
     fontWeight: '600',
     textAlign: 'right',
     marginRight: 4,
@@ -1186,12 +1240,12 @@ const styles = StyleSheet.create({
   notesLabel: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#475569',
+    color: colors.textSecondary,
     marginBottom: 2,
   },
   notesTextInput: {
     fontSize: 12,
-    color: '#0f172a',
+    color: colors.text,
     fontWeight: '500',
     padding: 0,
     marginTop: 2,
@@ -1208,16 +1262,16 @@ const styles = StyleSheet.create({
   catChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f8fafc',
+    backgroundColor: colors.surfaceAlt,
     borderWidth: 1,
-    borderColor: '#cbd5e1',
+    borderColor: colors.inputBorder,
     borderRadius: 10,
     paddingHorizontal: 8,
     paddingVertical: 4,
   },
   catChipText: {
     fontSize: 10,
-    color: '#64748b',
+    color: colors.textSecondary,
     fontWeight: '600',
   },
   receiptRow: {
@@ -1226,17 +1280,17 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 10,
     borderTopWidth: 1,
-    borderTopColor: '#f8fafc',
+    borderTopColor: colors.cardBorder,
   },
   receiptLabel: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#475569',
+    color: colors.textSecondary,
   },
   receiptAddBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#ecfeff',
+    backgroundColor: colors.primaryLight,
     borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 6,
@@ -1244,7 +1298,7 @@ const styles = StyleSheet.create({
   },
   receiptAddText: {
     fontSize: 11,
-    color: '#06b6d4',
+    color: colors.primary,
     fontWeight: '700',
   },
   receiptThumbnailContainer: {
@@ -1272,7 +1326,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 10,
     borderTopWidth: 1,
-    borderTopColor: '#f1f5f9',
+    borderTopColor: colors.cardBorder,
     gap: 10,
   },
   sheetCancelBtn: {
@@ -1280,21 +1334,21 @@ const styles = StyleSheet.create({
     height: 42,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#cbd5e1',
+    borderColor: colors.inputBorder,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
   },
   sheetCancelBtnText: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#475569',
+    color: colors.textSecondary,
   },
   sheetSaveBtn: {
     flex: 2,
     height: 42,
     borderRadius: 10,
-    backgroundColor: '#06b6d4',
+    backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1312,7 +1366,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   dateSubSheet: {
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
     borderRadius: 16,
     paddingBottom: 16,
   },
@@ -1323,7 +1377,7 @@ const styles = StyleSheet.create({
   pickerSubLabel: {
     fontSize: 11,
     fontWeight: '600',
-    color: '#64748b',
+    color: colors.textSecondary,
     alignSelf: 'flex-start',
     marginBottom: 4,
     marginTop: 8,
@@ -1334,23 +1388,23 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   pickerInput: {
-    backgroundColor: '#f1f5f9',
+    backgroundColor: colors.surfaceAlt,
     borderRadius: 8,
     width: 40,
     height: 36,
     textAlign: 'center',
     fontSize: 14,
     fontWeight: '700',
-    color: '#0f172a',
+    color: colors.text,
   },
   pickerSeparator: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#64748b',
+    color: colors.textSecondary,
     marginHorizontal: 4,
   },
   saveDateButton: {
-    backgroundColor: '#06b6d4',
+    backgroundColor: colors.primary,
     width: '100%',
     paddingVertical: 10,
     borderRadius: 10,

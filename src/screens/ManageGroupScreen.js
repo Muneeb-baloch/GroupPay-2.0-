@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -18,6 +18,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 import { groupsService } from '../services/groupsService';
 import { invitesService } from '../services/invitesService';
 import { usersService } from '../services/usersService';
@@ -27,7 +28,10 @@ import { createUniqueId, formatDate, getInitials } from '../utils/helpers';
 const ManageGroupScreen = ({ navigation, route }) => {
   const { groupName = 'Group', groupData } = route?.params || {};
   const { token, user } = useAuth();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => getStyles(colors), [colors]);
   const groupId = route?.params?.groupId || groupData?.id;
+  const isGroupAdmin = (groupData?.role || 'member') === 'admin';
 
   const [searchEmail, setSearchEmail] = useState('');
   const [loading, setLoading] = useState(false);
@@ -68,11 +72,11 @@ const ManageGroupScreen = ({ navigation, route }) => {
         raw?.group?.members ||
         [];
 
-      const activeStatuses = new Set(['ACTIVE', 'ACCEPTED', 'JOINED']);
+      const activeStatuses = new Set(['ACTIVE', 'ACCEPTED', 'JOINED', 'OWNER', 'ADMIN']);
       const visibleParticipants = participants.filter((p) => {
-        const status = (p?.status || p?.membership_status || '').toString().toUpperCase();
+        const status = (p?.status || p?.membership_status || p?.role || '').toString().toUpperCase();
         if (!status) return true;
-        return activeStatuses.has(status);
+        return activeStatuses.has(status) || activeStatuses.has(p?.role?.toString().toUpperCase());
       });
 
       setMembers(visibleParticipants.map(p => {
@@ -84,14 +88,14 @@ const ManageGroupScreen = ({ navigation, route }) => {
           name: p.person?.fullname || p.person?.username || p.fullname || p.name || 'Unknown',
           email: p.person?.email || p.email || '',
           role: role === 'admin' || role === 'owner' || p.is_admin ? 'admin' : 'member',
-          isYou: pid === (user?.person_id || user?.id),
+          isYou: String(pid) === String(user?.person_id || user?.id),
           joinedDate: p.joined_at || p.accepted_at || p.created_at,
           avatar: getInitials(p.person?.fullname || p.person?.username || p.fullname || p.name || 'U'),
-          color: groupData?.color || '#06b6d4',
+          color: groupData?.color || colors.primary,
         };
       }));
     } catch (error) {
-      console.log('Fetch group members error:', error.message);
+      console.warn('Fetch group members error:', error.message);
     } finally {
       setFetchingMembers(false);
     }
@@ -120,7 +124,7 @@ const ManageGroupScreen = ({ navigation, route }) => {
 
       setPendingInvites(dedupeInvites([...sentList, ...queuedList]));
     } catch (err) {
-      console.log('Fetch sent invites error:', err.message);
+      console.warn('Fetch sent invites error:', err.message);
     } finally {
       setFetchingInvites(false);
     }
@@ -214,7 +218,7 @@ const ManageGroupScreen = ({ navigation, route }) => {
           isYou: normalizeEmail(user?.email) === emailKey,
           joinedDate: invite?.updated_at || invite?.invitedDate || new Date().toISOString(),
           avatar: getInitials(localName),
-          color: groupData?.color || '#06b6d4',
+          color: groupData?.color || colors.primary,
         });
       });
 
@@ -231,7 +235,7 @@ const ManageGroupScreen = ({ navigation, route }) => {
         isYou: true,
         joinedDate: new Date().toISOString(),
         avatar: getInitials(myName),
-        color: groupData?.color || '#06b6d4',
+        color: groupData?.color || colors.primary,
       });
     }
 
@@ -331,7 +335,7 @@ const ManageGroupScreen = ({ navigation, route }) => {
         try {
           await queuedInvitesService.add(newInvite);
         } catch (e) {
-          console.log('Failed to persist queued invite', e.message);
+          console.warn('Failed to persist queued invite', e.message);
         }
         setPendingInvites(prev => [newInvite, ...prev]);
         await refreshPendingInvites();
@@ -383,7 +387,7 @@ const ManageGroupScreen = ({ navigation, route }) => {
           onPress: async () => {
             const toRemove = invite;
             if (toRemove?.status === 'queued') {
-              try { await queuedInvitesService.remove(toRemove.id); } catch (e) { console.log(e.message); }
+              try { await queuedInvitesService.remove(toRemove.id); } catch (e) { console.warn('Failed to remove queued invite:', e.message); }
             } else if (toRemove?.serverInviteId) {
               try {
                 await invitesService.cancelSentInvite(token, toRemove.serverInviteId);
@@ -429,7 +433,7 @@ const ManageGroupScreen = ({ navigation, route }) => {
   const renderMemberItem = ({ item }) => (
     <View style={styles.memberCard}>
       <View style={styles.memberInfo}>
-        <View style={[styles.memberAvatar, { backgroundColor: item.color || '#06b6d4' }]}>
+        <View style={[styles.memberAvatar, { backgroundColor: item.color || colors.primary }]}>
           <Text style={styles.avatarText}>{item.avatar}</Text>
         </View>
         <View style={styles.memberDetails}>
@@ -511,7 +515,7 @@ const ManageGroupScreen = ({ navigation, route }) => {
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
-      <StatusBar barStyle="dark-content" backgroundColor="#f8fffe" />
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
       
       {/* Header */}
       <View style={styles.header}>
@@ -520,7 +524,7 @@ const ManageGroupScreen = ({ navigation, route }) => {
           onPress={() => navigation.goBack()}
           activeOpacity={0.7}
         >
-          <Ionicons name="arrow-back" size={24} color="#0f172a" />
+          <Ionicons name="arrow-back" size={24} color={colors.text} />
         </TouchableOpacity>
         
         <View style={styles.headerContent}>
@@ -538,7 +542,7 @@ const ManageGroupScreen = ({ navigation, route }) => {
           onPress={() => Alert.alert('Edit Group', 'Group editing functionality will be implemented')}
           activeOpacity={0.7}
         >
-          <Ionicons name="create-outline" size={22} color="#06b6d4" />
+          <Ionicons name="create-outline" size={22} color={colors.primary} />
         </TouchableOpacity>
       </View>
 
@@ -556,7 +560,7 @@ const ManageGroupScreen = ({ navigation, route }) => {
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <View style={styles.sectionTitleRow}>
-                <Ionicons name="people" size={20} color="#06b6d4" />
+                <Ionicons name="people" size={20} color={colors.primary} />
                 <Text style={styles.sectionTitle}>
                   Current Members ({displayMembers.length})
                 </Text>
@@ -606,8 +610,8 @@ const ManageGroupScreen = ({ navigation, route }) => {
             </View>
           )}
 
-          {/* Invite Users Section */}
-          <View style={styles.section}>
+          {/* Invite Users Section — admin only */}
+          {isGroupAdmin && <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <View style={styles.sectionTitleRow}>
                 <Ionicons name="person-add" size={20} color="#10b981" />
@@ -620,11 +624,11 @@ const ManageGroupScreen = ({ navigation, route }) => {
 
             <View style={styles.inviteForm}>
               <View style={styles.inputContainer}>
-                <Ionicons name="mail-outline" size={20} color="#64748b" style={styles.inputIcon} />
+                <Ionicons name="mail-outline" size={20} color={colors.textSecondary} style={styles.inputIcon} />
                 <TextInput
                   style={styles.emailInput}
                   placeholder="Enter email address..."
-                  placeholderTextColor="#9ca3af"
+                  placeholderTextColor={colors.textMuted}
                   value={searchEmail}
                   onChangeText={setSearchEmail}
                   keyboardType="email-address"
@@ -657,17 +661,17 @@ const ManageGroupScreen = ({ navigation, route }) => {
                 )}
               </TouchableOpacity>
             </View>
-          </View>
+          </View>}
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (colors) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8fffe',
+    backgroundColor: colors.background,
   },
 
   // Header
@@ -676,9 +680,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 20,
     paddingVertical: 16,
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
     borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
+    borderBottomColor: colors.cardBorder,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
@@ -695,7 +699,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 20,
     fontWeight: '800',
-    color: '#0f172a',
+    color: colors.text,
     letterSpacing: -0.3,
   },
   groupInfo: {
@@ -711,13 +715,13 @@ const styles = StyleSheet.create({
   },
   headerSubtitle: {
     fontSize: 14,
-    color: '#64748b',
+    color: colors.textSecondary,
     fontWeight: '600',
   },
   editButton: {
     padding: 8,
     borderRadius: 8,
-    backgroundColor: '#f0f9ff',
+    backgroundColor: colors.primaryLight,
   },
 
   // Keyboard Avoiding View
@@ -749,17 +753,17 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#0f172a',
+    color: colors.text,
   },
   sectionSubtitle: {
     fontSize: 14,
-    color: '#64748b',
+    color: colors.textSecondary,
     fontWeight: '500',
   },
 
   // Member Cards
   memberCard: {
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
     borderRadius: 12,
     padding: 16,
     flexDirection: 'row',
@@ -771,7 +775,7 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
     elevation: 1,
     borderWidth: 1,
-    borderColor: '#f1f5f9',
+    borderColor: colors.cardBorder,
   },
   memberInfo: {
     flexDirection: 'row',
@@ -782,7 +786,7 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: '#06b6d4',
+    backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -804,7 +808,7 @@ const styles = StyleSheet.create({
   memberName: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#0f172a',
+    color: colors.text,
   },
   adminBadge: {
     backgroundColor: '#10b981',
@@ -818,7 +822,7 @@ const styles = StyleSheet.create({
     color: '#ffffff',
   },
   memberBadge: {
-    backgroundColor: '#e2e8f0',
+    backgroundColor: colors.surfaceAlt,
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
@@ -826,23 +830,23 @@ const styles = StyleSheet.create({
   memberBadgeText: {
     fontSize: 10,
     fontWeight: '700',
-    color: '#475569',
+    color: colors.textSecondary,
   },
   memberEmail: {
     fontSize: 14,
-    color: '#64748b',
+    color: colors.textSecondary,
     fontWeight: '500',
     marginBottom: 2,
   },
   memberJoined: {
     fontSize: 12,
-    color: '#9ca3af',
+    color: colors.textMuted,
     fontWeight: '500',
   },
   removeButton: {
     padding: 8,
     borderRadius: 20,
-    backgroundColor: '#fef2f2',
+    backgroundColor: colors.errorLight,
   },
   memberSeparator: {
     height: 12,
@@ -850,7 +854,7 @@ const styles = StyleSheet.create({
 
   // Invite Cards
   inviteCard: {
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
     borderRadius: 12,
     padding: 16,
     flexDirection: 'row',
@@ -862,8 +866,8 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
     elevation: 1,
     borderWidth: 1,
-    borderColor: '#fef3c7',
-    backgroundColor: '#fffbeb',
+    borderColor: colors.cardBorder,
+    backgroundColor: colors.warningLight,
   },
   inviteInfo: {
     flexDirection: 'row',
@@ -874,7 +878,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#fef3c7',
+    backgroundColor: colors.warningLight,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -885,7 +889,7 @@ const styles = StyleSheet.create({
   inviteEmail: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#0f172a',
+    color: colors.text,
     marginBottom: 2,
   },
   inviteStatus: {
@@ -896,7 +900,7 @@ const styles = StyleSheet.create({
   cancelButton: {
     padding: 8,
     borderRadius: 20,
-    backgroundColor: '#f8fafc',
+    backgroundColor: colors.surfaceAlt,
   },
   inviteActions: {
     flexDirection: 'row',
@@ -907,20 +911,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: '#e0f2fe',
+    backgroundColor: colors.primaryLight,
     paddingHorizontal: 10,
     paddingVertical: 7,
     borderRadius: 10,
   },
   resendButtonText: {
-    color: '#06b6d4',
+    color: colors.primary,
     fontSize: 12,
     fontWeight: '700',
   },
 
   // Invite Form
   inviteForm: {
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
     borderRadius: 12,
     padding: 20,
     shadowColor: '#000',
@@ -929,18 +933,18 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 2,
     borderWidth: 1,
-    borderColor: '#e0f2fe',
+    borderColor: colors.primaryBorder,
   },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f8fafc',
+    backgroundColor: colors.surfaceAlt,
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 4,
     marginBottom: 16,
     borderWidth: 2,
-    borderColor: '#e2e8f0',
+    borderColor: colors.inputBorder,
   },
   inputIcon: {
     marginRight: 12,
@@ -948,7 +952,7 @@ const styles = StyleSheet.create({
   emailInput: {
     flex: 1,
     fontSize: 16,
-    color: '#0f172a',
+    color: colors.text,
     fontWeight: '500',
     paddingVertical: 12,
     minHeight: 48,
@@ -957,11 +961,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#06b6d4',
+    backgroundColor: colors.primary,
     paddingVertical: 14,
     borderRadius: 12,
     gap: 8,
-    shadowColor: '#06b6d4',
+    shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
     shadowRadius: 8,

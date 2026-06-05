@@ -1,31 +1,34 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  StatusBar,
-  SafeAreaView,
-  ActivityIndicator,
-  Alert,
-  RefreshControl
-} from 'react-native';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, StatusBar, ActivityIndicator, Alert, RefreshControl, Image, Modal, TextInput } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 import { scenesService } from '../services/scenesService';
+import { appealsService } from '../services/appealsService';
 
 const SceneDetailScreen = () => {
   const navigation = useNavigation();
   const route = useRoute();
   const { token, user } = useAuth();
-  const { scene: initialScene } = route.params;
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => getStyles(colors), [colors]);
+  const { scene: initialScene, userRole = 'member' } = route.params;
 
-  const [scene, setScene] = useState(initialScene || {});
+  const [scene, setScene] = useState({ yourShare: initialScene?.yourShare || '0.00', ...(initialScene || {}) });
   const [participants, setParticipants] = useState([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+
+  // Appeals state
+  const [appeals, setAppeals] = useState([]);
+  const [appealsLoading, setAppealsLoading] = useState(false);
+  const [appealModalVisible, setAppealModalVisible] = useState(false);
+  const [appealMessage, setAppealMessage] = useState('');
+  const [submittingAppeal, setSubmittingAppeal] = useState(false);
+  const [adminResponseModal, setAdminResponseModal] = useState(null);
+  const [adminComment, setAdminComment] = useState('');
 
   const fetchSceneDetails = useCallback(async () => {
     if (!token || !initialScene?.id) return;
@@ -33,9 +36,21 @@ const SceneDetailScreen = () => {
     try {
       const response = await scenesService.getSceneById(token, initialScene.id);
       const fullScene = scenesService.extractScene(response) || response?.data || response;
-      
-      const rawParticipants = fullScene.participants || fullScene.scene_participants || fullScene.members || [];
-      const totalBill = Number(fullScene?.total_amount || fullScene?.totalBill || 0);
+
+      // Detail API often omits participants — fall back to the list-response raw data
+      const rawParticipants =
+        (fullScene?.participants?.length > 0 ? fullScene.participants : null) ||
+        (fullScene?.scene_participants?.length > 0 ? fullScene.scene_participants : null) ||
+        (fullScene?.members?.length > 0 ? fullScene.members : null) ||
+        initialScene?.raw?.participants ||
+        initialScene?.raw?.scene_participants ||
+        initialScene?.raw?.members ||
+        [];
+
+      const totalBill = Number(
+        fullScene?.total_amount || fullScene?.totalBill ||
+        initialScene?.raw?.total_amount || initialScene?.totalBill || 0
+      );
       const sumAdditional = rawParticipants.reduce((sum, p) => sum + Number(p.additional_amount || 0), 0);
       const participantCount = rawParticipants.length;
       const perPersonShare = participantCount > 0 ? (totalBill - sumAdditional) / participantCount : 0;
@@ -43,39 +58,42 @@ const SceneDetailScreen = () => {
       const normalizedParticipants = rawParticipants.map(p => {
         const paid = Number(p.paid_amount || 0);
         const additional = Number(p.additional_amount || 0);
-        const isIndividual = p.participant_category === 'INDIVIDUAL';
-        
-        // Final display cost for the user
-        // INDIVIDUAL: their entire cost is stored in additional_amount (which encodes individual_bill - perShare)
-        // Wait, for display purposes, what is their cost? 
-        // In CreateScene, if INDIVIDUAL, the displayShare = their exact personal bill.
-        // Wait, the API might return `share_amount` if calculated correctly, but to be robust:
-        // Actually, if we use the same math as ScenesScreen: displayShare = perPersonShare + additional
-        const displayShare = perPersonShare + additional; 
-        
-        const balance = paid - displayShare; // Positive: gets back, Negative: owes
-        
+        const displayShare = perPersonShare + additional;
+        const balance = paid - displayShare;
+
         return {
-          id: String(p.person_id || p.id),
+          id: String(p.person_id || p.person?.id || p.id),
           name: p.person?.fullname || p.person?.username || p.name || 'Unknown',
-          avatar: p.person?.fullname ? p.person.fullname.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() : 'U',
+          avatar: p.person?.fullname
+            ? p.person.fullname.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
+            : 'U',
+          imageUrl: p.person?.profile_picture_url || p.person?.avatar_url || null,
           color: ['#06b6d4', '#8b5cf6', '#f59e0b', '#10b981', '#ef4444'][Number(p.person_id || p.id || 0) % 5],
-          paid: paid,
+          paid,
           share: displayShare,
           status: balance >= -0.01 ? 'paid' : 'owes',
-          balance: balance
+          balance,
         };
       });
 
       const currentUserId = String(user?.person_id || user?.id);
       const me = normalizedParticipants.find(p => p.id === currentUserId);
-      const yourShare = me ? me.share.toFixed(2) : '0.00';
+      // Preserve the pre-computed share from the list API when detail API has no participants
+      const yourShare = me
+        ? me.share.toFixed(2)
+        : (initialScene?.yourShare && initialScene.yourShare !== '0.00'
+            ? initialScene.yourShare
+            : '0.00');
 
       setScene(prev => ({ ...prev, ...fullScene, yourShare }));
-      setParticipants(normalizedParticipants);
+      setParticipants(
+        userRole === 'admin'
+          ? normalizedParticipants
+          : normalizedParticipants.filter(p => p.id === currentUserId)
+      );
     } catch (error) {
-      console.log('Fetch scene details error:', error.message);
-      Alert.alert('Error', 'Could not load scene details.');
+      console.warn('Fetch scene details error:', error.message);
+      // Keep initialScene data on error — don't clear what we already know
     } finally {
       setLoading(false);
     }
@@ -87,19 +105,123 @@ const SceneDetailScreen = () => {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await fetchSceneDetails();
+    await Promise.all([fetchSceneDetails(), fetchAppeals()]);
     setRefreshing(false);
   };
 
+  const getGroupId = useCallback(() => {
+    return (
+      scene?.group_id ||
+      scene?.group?.id ||
+      scene?.raw?.group_id ||
+      initialScene?.group_id ||
+      initialScene?.group?.id ||
+      initialScene?.raw?.group_id ||
+      route.params?.groupId ||
+      null
+    );
+  }, [scene, initialScene, route.params]);
+
+  const fetchAppeals = useCallback(async () => {
+    if (!token) return;
+    const groupId = getGroupId();
+    if (!groupId) return;
+    setAppealsLoading(true);
+    try {
+      const data = await appealsService.getAppeals(token, { groupId });
+      const raw = data?.data?.appeals || data?.data || data?.appeals || data?.rows || [];
+      setAppeals(Array.isArray(raw) ? raw : []);
+    } catch {
+      // silently ignore — appeals are secondary content
+    } finally {
+      setAppealsLoading(false);
+    }
+  }, [token, getGroupId]);
+
+  useEffect(() => { fetchAppeals(); }, [fetchAppeals]);
+
+  const handleSubmitAppeal = async () => {
+    if (!appealMessage.trim()) {
+      Alert.alert('Required', 'Please enter your appeal message.');
+      return;
+    }
+    const groupId = getGroupId();
+    if (!groupId) {
+      Alert.alert('Error', 'Could not determine group for this scene.');
+      return;
+    }
+    setSubmittingAppeal(true);
+    try {
+      await appealsService.createAppeal(token, { group_id: groupId, message: appealMessage.trim() });
+      setAppealMessage('');
+      setAppealModalVisible(false);
+      await fetchAppeals();
+      Alert.alert('Appeal Submitted', 'Your appeal has been submitted successfully.');
+    } catch (err) {
+      Alert.alert('Error', err.message || 'Could not submit appeal.');
+    } finally {
+      setSubmittingAppeal(false);
+    }
+  };
+
+  const handleAdminUpdateAppeal = async (appealId, status) => {
+    try {
+      await appealsService.updateAppeal(token, appealId, {
+        status,
+        admin_comment: adminComment.trim() || undefined,
+      });
+      setAdminResponseModal(null);
+      setAdminComment('');
+      await fetchAppeals();
+    } catch (err) {
+      Alert.alert('Error', err.message || 'Could not update appeal.');
+    }
+  };
+
+  const handleDeleteAppeal = (appealId) => {
+    Alert.alert('Cancel Appeal', 'Are you sure you want to cancel this appeal?', [
+      { text: 'No', style: 'cancel' },
+      {
+        text: 'Yes, Cancel',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await appealsService.deleteAppeal(token, appealId);
+            await fetchAppeals();
+          } catch (err) {
+            Alert.alert('Error', err.message || 'Could not cancel appeal.');
+          }
+        },
+      },
+    ]);
+  };
+
+  const appealStatusColor = (status) => {
+    const s = (status || '').toUpperCase();
+    if (s === 'RESOLVED') return '#10b981';
+    if (s === 'REJECTED') return colors.error;
+    return '#f59e0b';
+  };
+
+  const currentUserId = String(user?.person_id || user?.id || '');
+
   const handleEdit = () => {
-    navigation.navigate('CreateScene', { existingScene: scene, sceneId: scene.id });
+    // Pass raw API data — list endpoint has the actual participants array;
+    // scene state has participants as a count number (from normalizeScene)
+    navigation.navigate('CreateScene', {
+      existingScene: initialScene?.raw || initialScene || scene,
+      sceneId: initialScene?.id || scene?.id,
+    });
   };
 
   const renderParticipant = (participant) => (
     <View key={participant.id} style={styles.participantCard}>
       <View style={styles.participantLeft}>
-        <View style={[styles.avatar, { backgroundColor: participant.color }]}>
-          <Text style={styles.avatarText}>{participant.avatar}</Text>
+        <View style={[styles.avatar, { backgroundColor: participant.imageUrl ? 'transparent' : participant.color }]}>
+          {participant.imageUrl
+            ? <Image source={{ uri: participant.imageUrl }} style={{ width: 44, height: 44, borderRadius: 22 }} />
+            : <Text style={styles.avatarText}>{participant.avatar}</Text>
+          }
         </View>
         <View style={styles.participantInfo}>
           <Text style={styles.participantName}>{participant.name}</Text>
@@ -113,17 +235,17 @@ const SceneDetailScreen = () => {
       <View style={styles.participantRight}>
         <Text style={[
           styles.balanceAmount,
-          { color: participant.balance >= -0.01 ? '#10b981' : '#ef4444' }
+          { color: participant.balance >= -0.01 ? '#10b981' : colors.error }
         ]}>
           {participant.balance > 0.01 ? '+' : ''}Rs {participant.balance.toLocaleString()}
         </Text>
         <View style={[
           styles.statusBadge,
-          { backgroundColor: participant.status === 'paid' ? '#dcfce7' : '#fee2e2' }
+          { backgroundColor: participant.status === 'paid' ? colors.successLight : colors.errorLight }
         ]}>
           <Text style={[
             styles.statusText,
-            { color: participant.status === 'paid' ? '#166534' : '#991b1b' }
+            { color: participant.status === 'paid' ? '#166534' : colors.error }
           ]}>
             {participant.status === 'paid' ? 'Paid' : 'Owes'}
           </Text>
@@ -138,14 +260,14 @@ const SceneDetailScreen = () => {
   if (loading && !refreshing) {
     return (
       <View style={[styles.container, styles.centered]}>
-        <ActivityIndicator size="large" color="#06b6d4" />
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#f8fffe" />
+    <SafeAreaView style={styles.container} edges={['bottom']}>
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.background} />
       
       {/* Header - Fixed to match other screens */}
       <View style={styles.header}>
@@ -154,7 +276,7 @@ const SceneDetailScreen = () => {
           onPress={() => navigation.goBack()}
           activeOpacity={0.7}
         >
-          <Ionicons name="arrow-back" size={24} color="#0f172a" />
+          <Ionicons name="arrow-back" size={24} color={colors.text} />
         </TouchableOpacity>
         
         <View style={styles.headerContent}>
@@ -162,13 +284,16 @@ const SceneDetailScreen = () => {
           <Text style={styles.subtitle}>{scene.location}</Text>
         </View>
 
-        <TouchableOpacity 
-          style={styles.editHeaderButton}
-          onPress={handleEdit}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="pencil" size={20} color="#06b6d4" />
-        </TouchableOpacity>
+        {userRole === 'admin' && (
+          <TouchableOpacity
+            style={styles.editHeaderButton}
+            onPress={handleEdit}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="pencil" size={20} color={colors.primary} />
+          </TouchableOpacity>
+        )}
+        {userRole !== 'admin' && <View style={styles.editHeaderButton} />}
       </View>
 
       <ScrollView 
@@ -176,7 +301,7 @@ const SceneDetailScreen = () => {
         showsVerticalScrollIndicator={false} 
         contentContainerStyle={styles.scrollContent}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#06b6d4" />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
         }
       >
         {/* Compact Scene Summary Card - No duplications */}
@@ -197,7 +322,7 @@ const SceneDetailScreen = () => {
             <View style={styles.detailsRow}>
               <View style={styles.detailField}>
                 <View style={styles.fieldHeader}>
-                  <Ionicons name="people" size={14} color="#64748b" />
+                  <Ionicons name="people" size={14} color={colors.textSecondary} />
                   <Text style={styles.fieldLabel}>Group</Text>
                 </View>
                 <Text style={styles.fieldValue}>{scene.group?.name || scene.group_name || scene.group || 'Group'}</Text>
@@ -205,7 +330,7 @@ const SceneDetailScreen = () => {
               
               <View style={styles.detailField}>
                 <View style={styles.fieldHeader}>
-                  <Ionicons name="calendar" size={14} color="#64748b" />
+                  <Ionicons name="calendar" size={14} color={colors.textSecondary} />
                   <Text style={styles.fieldLabel}>Date</Text>
                 </View>
                 <Text style={styles.fieldValue}>{displayDate}</Text>
@@ -215,7 +340,7 @@ const SceneDetailScreen = () => {
             <View style={styles.detailsRow}>
               <View style={styles.detailField}>
                 <View style={styles.fieldHeader}>
-                  <Ionicons name="time" size={14} color="#64748b" />
+                  <Ionicons name="time" size={14} color={colors.textSecondary} />
                   <Text style={styles.fieldLabel}>Time</Text>
                 </View>
                 <Text style={styles.fieldValue}>{displayTime}</Text>
@@ -223,7 +348,7 @@ const SceneDetailScreen = () => {
               
               <View style={styles.detailField}>
                 <View style={styles.fieldHeader}>
-                  <Ionicons name="people" size={14} color="#64748b" />
+                  <Ionicons name="people" size={14} color={colors.textSecondary} />
                   <Text style={styles.fieldLabel}>Participants</Text>
                 </View>
                 <Text style={styles.fieldValue}>{participants.length}</Text>
@@ -245,7 +370,7 @@ const SceneDetailScreen = () => {
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Participants ({participants.length})</Text>
           </View>
-          
+
           <View style={styles.participantsList}>
             {participants.length > 0 ? (
               participants.map(renderParticipant)
@@ -256,30 +381,185 @@ const SceneDetailScreen = () => {
             )}
           </View>
         </View>
+
+        {/* Appeals Section */}
+        <View style={styles.appealsSection}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Appeals ({appeals.length})</Text>
+            {userRole !== 'admin' && (
+              <TouchableOpacity
+                style={styles.appealSubmitBtn}
+                onPress={() => setAppealModalVisible(true)}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="add" size={16} color="#ffffff" />
+                <Text style={styles.appealSubmitBtnText}>Submit</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {appealsLoading ? (
+            <ActivityIndicator size="small" color={colors.primary} style={{ marginVertical: 12 }} />
+          ) : appeals.length === 0 ? (
+            <View style={styles.emptyAppeals}>
+              <Ionicons name="flag-outline" size={32} color={colors.textMuted} />
+              <Text style={styles.emptyAppealsText}>No appeals yet.</Text>
+              {userRole !== 'admin' && (
+                <Text style={styles.emptyAppealsSubtext}>Submit an appeal if you have a concern about this group.</Text>
+              )}
+            </View>
+          ) : (
+            <View style={styles.appealsList}>
+              {appeals.map((appeal) => {
+                const isOwner = String(appeal.person_id || appeal.sender_id || appeal.created_by || '') === currentUserId;
+                const status = (appeal.status || 'OPEN').toUpperCase();
+                return (
+                  <View key={appeal.id} style={styles.appealCard}>
+                    <View style={styles.appealCardHeader}>
+                      <View style={[styles.appealStatusBadge, { backgroundColor: `${appealStatusColor(status)}20` }]}>
+                        <Text style={[styles.appealStatusText, { color: appealStatusColor(status) }]}>{status}</Text>
+                      </View>
+                      <Text style={styles.appealDate}>
+                        {appeal.created_at ? new Date(appeal.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}
+                      </Text>
+                    </View>
+
+                    <Text style={styles.appealMessage}>{appeal.message}</Text>
+
+                    {appeal.admin_comment ? (
+                      <View style={styles.adminCommentBox}>
+                        <Text style={styles.adminCommentLabel}>Admin response:</Text>
+                        <Text style={styles.adminCommentText}>{appeal.admin_comment}</Text>
+                      </View>
+                    ) : null}
+
+                    <View style={styles.appealActions}>
+                      {userRole === 'admin' && status === 'OPEN' && (
+                        <TouchableOpacity
+                          style={styles.appealActionBtn}
+                          onPress={() => { setAdminResponseModal(appeal); setAdminComment(''); }}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.appealActionBtnText}>Respond</Text>
+                        </TouchableOpacity>
+                      )}
+                      {isOwner && status === 'OPEN' && (
+                        <TouchableOpacity
+                          style={[styles.appealActionBtn, styles.appealCancelBtn]}
+                          onPress={() => handleDeleteAppeal(appeal.id)}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={[styles.appealActionBtnText, { color: colors.error }]}>Cancel</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          )}
+        </View>
       </ScrollView>
+
+      {/* Submit Appeal Modal */}
+      <Modal visible={appealModalVisible} transparent animationType="slide" onRequestClose={() => setAppealModalVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalSheet}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Submit Appeal</Text>
+              <TouchableOpacity onPress={() => setAppealModalVisible(false)} activeOpacity={0.7}>
+                <Ionicons name="close" size={24} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.modalSubtitle}>Describe your concern or reason for appeal.</Text>
+            <TextInput
+              style={styles.appealTextInput}
+              placeholder="Enter your appeal message..."
+              placeholderTextColor={colors.textMuted}
+              value={appealMessage}
+              onChangeText={setAppealMessage}
+              multiline
+              numberOfLines={4}
+              textAlignVertical="top"
+            />
+            <TouchableOpacity
+              style={[styles.modalSubmitBtn, submittingAppeal && { opacity: 0.6 }]}
+              onPress={handleSubmitAppeal}
+              disabled={submittingAppeal}
+              activeOpacity={0.8}
+            >
+              {submittingAppeal
+                ? <ActivityIndicator size="small" color="#ffffff" />
+                : <Text style={styles.modalSubmitBtnText}>Submit Appeal</Text>
+              }
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Admin Respond Modal */}
+      <Modal visible={!!adminResponseModal} transparent animationType="slide" onRequestClose={() => setAdminResponseModal(null)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalSheet}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Respond to Appeal</Text>
+              <TouchableOpacity onPress={() => setAdminResponseModal(null)} activeOpacity={0.7}>
+                <Ionicons name="close" size={24} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.appealMessage} numberOfLines={3}>{adminResponseModal?.message}</Text>
+            <TextInput
+              style={[styles.appealTextInput, { marginTop: 12 }]}
+              placeholder="Add a comment (optional)..."
+              placeholderTextColor={colors.textMuted}
+              value={adminComment}
+              onChangeText={setAdminComment}
+              multiline
+              numberOfLines={3}
+              textAlignVertical="top"
+            />
+            <View style={styles.adminResponseBtns}>
+              <TouchableOpacity
+                style={[styles.modalSubmitBtn, { backgroundColor: '#10b981', flex: 1, marginRight: 8 }]}
+                onPress={() => handleAdminUpdateAppeal(adminResponseModal?.id, 'RESOLVED')}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.modalSubmitBtnText}>Resolve</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalSubmitBtn, { backgroundColor: colors.error, flex: 1 }]}
+                onPress={() => handleAdminUpdateAppeal(adminResponseModal?.id, 'REJECTED')}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.modalSubmitBtnText}>Reject</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (colors) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8fffe',
+    backgroundColor: colors.background,
   },
   centered: {
     justifyContent: 'center',
     alignItems: 'center',
   },
-  
+
   // Header - Fixed to match other screens
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 20,
     paddingVertical: 16,
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
     borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
+    borderBottomColor: colors.cardBorder,
   },
   backButton: {
     padding: 4,
@@ -291,18 +571,18 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 24,
     fontWeight: '800',
-    color: '#0f172a',
+    color: colors.text,
     letterSpacing: -0.5,
   },
   subtitle: {
     fontSize: 14,
-    color: '#64748b',
+    color: colors.textSecondary,
     fontWeight: '600',
     marginTop: 4,
   },
   editHeaderButton: {
     padding: 8,
-    backgroundColor: '#ecfeff',
+    backgroundColor: colors.primaryLight,
     borderRadius: 8,
   },
 
@@ -318,17 +598,17 @@ const styles = StyleSheet.create({
 
   // Summary Card - Much more compact, no duplications
   summaryCard: {
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
     borderRadius: 12,
-    padding: 16, // Reduced from 20
+    padding: 16,
     marginBottom: 20,
     shadowColor: '#06b6d4',
-    shadowOffset: { width: 0, height: 2 }, // Reduced shadow
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.06,
     shadowRadius: 8,
     elevation: 3,
     borderWidth: 1,
-    borderColor: '#e0f2fe',
+    borderColor: colors.primaryBorder,
   },
   summaryHeader: {
     flexDirection: 'row',
@@ -342,38 +622,38 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   totalLabel: {
-    fontSize: 13, // Reduced from 14
-    color: '#64748b',
+    fontSize: 13,
+    color: colors.textSecondary,
     fontWeight: '500',
-    marginBottom: 3, // Reduced from 4
+    marginBottom: 3,
   },
   totalAmount: {
-    fontSize: 24, // Reduced from 28
+    fontSize: 24,
     fontWeight: '800',
-    color: '#0f172a',
+    color: colors.text,
     letterSpacing: -0.6,
   },
   shareLabel: {
-    fontSize: 13, // Reduced from 14
-    color: '#64748b',
+    fontSize: 13,
+    color: colors.textSecondary,
     fontWeight: '500',
-    marginBottom: 3, // Reduced from 4
+    marginBottom: 3,
   },
   shareAmount: {
-    fontSize: 18, // Reduced from 20
+    fontSize: 18,
     fontWeight: '700',
-    color: '#06b6d4',
+    color: colors.primary,
     letterSpacing: -0.3,
   },
 
   // Details Grid - More compact
   detailsGrid: {
-    paddingTop: 12, // Reduced from 20
-    paddingBottom: 12, // Reduced from 20
+    paddingTop: 12,
+    paddingBottom: 12,
     borderTopWidth: 1,
-    borderTopColor: '#f1f5f9',
+    borderTopColor: colors.cardBorder,
     borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
+    borderBottomColor: colors.cardBorder,
   },
   detailsRow: {
     flexDirection: 'row',
@@ -390,13 +670,13 @@ const styles = StyleSheet.create({
     gap: 4, // Reduced from 6
   },
   fieldLabel: {
-    fontSize: 11, // Reduced from 12
-    color: '#64748b',
+    fontSize: 11,
+    color: colors.textSecondary,
     fontWeight: '500',
   },
   fieldValue: {
-    fontSize: 13, // Reduced from 14
-    color: '#0f172a',
+    fontSize: 13,
+    color: colors.text,
     fontWeight: '600',
   },
 
@@ -405,16 +685,16 @@ const styles = StyleSheet.create({
     paddingTop: 12, // Reduced from 16
   },
   descriptionTitle: {
-    fontSize: 13, // Reduced from 14
+    fontSize: 13,
     fontWeight: '500',
-    color: '#64748b',
-    marginBottom: 4, // Reduced from 6
+    color: colors.textSecondary,
+    marginBottom: 4,
   },
   descriptionText: {
-    fontSize: 14, // Reduced from 15
-    color: '#0f172a',
+    fontSize: 14,
+    color: colors.text,
     fontWeight: '500',
-    lineHeight: 18, // Reduced from 20
+    lineHeight: 18,
   },
 
   // Participants Section - Now the final section with proper bottom spacing
@@ -430,7 +710,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#0f172a',
+    color: colors.text,
   },
   participantsList: {
     gap: 12,
@@ -438,7 +718,7 @@ const styles = StyleSheet.create({
 
   // Participant Card
   participantCard: {
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
     borderRadius: 12,
     padding: 16,
     flexDirection: 'row',
@@ -473,7 +753,7 @@ const styles = StyleSheet.create({
   participantName: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#0f172a',
+    color: colors.text,
     marginBottom: 4,
   },
   participantDetails: {
@@ -481,12 +761,12 @@ const styles = StyleSheet.create({
   },
   participantShare: {
     fontSize: 13,
-    color: '#64748b',
+    color: colors.textSecondary,
     fontWeight: '500',
   },
   participantPaid: {
     fontSize: 13,
-    color: '#06b6d4',
+    color: colors.primary,
     fontWeight: '600',
   },
   participantRight: {
@@ -511,9 +791,180 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   emptyParticipantsText: {
-    color: '#64748b',
+    color: colors.textSecondary,
     fontSize: 14,
-  }
+  },
+
+  // Appeals Section
+  appealsSection: {
+    marginTop: 24,
+  },
+  appealSubmitBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    gap: 4,
+  },
+  appealSubmitBtnText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  emptyAppeals: {
+    padding: 24,
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+  },
+  emptyAppealsText: {
+    color: colors.textSecondary,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  emptyAppealsSubtext: {
+    color: colors.textMuted,
+    fontSize: 13,
+    textAlign: 'center',
+  },
+  appealsList: {
+    gap: 12,
+  },
+  appealCard: {
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+  },
+  appealCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  appealStatusBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  appealStatusText: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  appealDate: {
+    fontSize: 12,
+    color: colors.textMuted,
+    fontWeight: '500',
+  },
+  appealMessage: {
+    fontSize: 14,
+    color: colors.text,
+    fontWeight: '500',
+    lineHeight: 20,
+    marginBottom: 8,
+  },
+  adminCommentBox: {
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: colors.primary,
+  },
+  adminCommentLabel: {
+    fontSize: 11,
+    color: colors.textMuted,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  adminCommentText: {
+    fontSize: 13,
+    color: colors.text,
+    fontWeight: '500',
+  },
+  appealActions: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 4,
+  },
+  appealActionBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: colors.primaryLight,
+  },
+  appealCancelBtn: {
+    backgroundColor: colors.errorLight,
+  },
+  appealActionBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+
+  // Modals
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: colors.overlay,
+    justifyContent: 'flex-end',
+  },
+  modalSheet: {
+    backgroundColor: colors.card,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 24,
+    paddingBottom: 40,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginBottom: 16,
+  },
+  appealTextInput: {
+    backgroundColor: colors.inputBg,
+    borderWidth: 1,
+    borderColor: colors.inputBorder,
+    borderRadius: 10,
+    padding: 12,
+    fontSize: 14,
+    color: colors.inputText,
+    minHeight: 100,
+    marginBottom: 16,
+  },
+  modalSubmitBtn: {
+    backgroundColor: colors.primary,
+    borderRadius: 10,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalSubmitBtnText: {
+    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  adminResponseBtns: {
+    flexDirection: 'row',
+    marginTop: 12,
+  },
 });
 
 export default SceneDetailScreen;

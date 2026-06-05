@@ -74,6 +74,16 @@ export const groupsService = {
   fetchGroups: async (token, currentUserId = null) => {
     const data = await apiCall(API_ENDPOINTS.groups, 'GET', null, token);
     const raw = extractGroupsFromResponse(data).filter(isVisibleGroup);
+    if (raw.length > 0) {
+      console.warn('[fetchGroups] first group raw keys:', Object.keys(raw[0]));
+      console.warn('[fetchGroups] first group sample:', JSON.stringify({
+        name: raw[0]?.name || raw[0]?.group_name,
+        participant_count: raw[0]?.participant_count,
+        members_count: raw[0]?.members_count,
+        member_count: raw[0]?.member_count,
+        participants_len: (raw[0]?.participants || raw[0]?.members || []).length,
+      }));
+    }
     const normalized = raw.map((g, i) => {
       const normalizedGroup = normalizeGroup(g, i);
       const admin = isAdminForGroup(g, currentUserId);
@@ -122,4 +132,23 @@ export const groupsService = {
    */
   leaveGroup: (token, id) =>
     apiCall(API_ENDPOINTS.leaveGroup(id), 'DELETE', null, token),
+
+  /**
+   * Get active members for a group (dedicated endpoint — more reliable than getGroup participants)
+   */
+  getGroupMembers: (token, id) =>
+    apiCall(API_ENDPOINTS.groupMembers(id), 'GET', null, token),
+
+  /**
+   * Get current user's net balance in a specific group
+   * Positive = owed to them, negative = they owe
+   */
+  getMyGroupBalance: (token, groupId) =>
+    apiCall(API_ENDPOINTS.groupMyBalance(groupId), 'GET', null, token),
+
+  /**
+   * Change a member's role (admin only)
+   */
+  changeMemberRole: (token, groupId, personId, role) =>
+    apiCall(API_ENDPOINTS.groupMemberRole(groupId, personId), 'PATCH', { role }, token),
 };

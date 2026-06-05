@@ -3,11 +3,13 @@ import { View, TouchableOpacity, Text, Dimensions, Animated } from 'react-native
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { customTabStyles } from '../styles/customTabStyles';
+import { useTheme } from '../context/ThemeContext';
 
 const { width } = Dimensions.get('window');
 
 const CustomBottomTab = ({ state, descriptors, navigation }) => {
   const insets = useSafeAreaInsets();
+  const { colors } = useTheme();
   const translateX = useRef(new Animated.Value(0)).current;
   const tabScales = useRef(
     Array(4).fill(0).map(() => new Animated.Value(1))
@@ -75,13 +77,13 @@ const tabBarWidth = width - 32;
           <Ionicons
             name={tab.icon}
             size={isFocused ? 22 : 20}
-            color={isFocused ? '#ffffff' : '#64748b'}
+            color={isFocused ? '#ffffff' : colors.tabBarText}
           />
         </Animated.View>
         <Text
           style={[
             customTabStyles.tabLabel,
-            { color: isFocused ? '#0b7285' : '#64748b' },
+            { color: isFocused ? colors.tabBarTextActive : colors.tabBarText },
           ]}
         >
           {tab.name}
@@ -91,8 +93,8 @@ const tabBarWidth = width - 32;
   };
 
   return (
-    <View style={[customTabStyles.container, { bottom: dynamicBottom }]}> 
-      <View style={[customTabStyles.tabBar, { width: tabBarWidth }]}> 
+    <View style={[customTabStyles.container, { bottom: dynamicBottom }]}>
+      <View style={[customTabStyles.tabBar, { width: tabBarWidth, backgroundColor: colors.tabBarBg, borderColor: colors.cardBorder }]}>
         <Animated.View
           style={[
             customTabStyles.indicator,

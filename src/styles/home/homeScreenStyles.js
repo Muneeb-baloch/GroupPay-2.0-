@@ -1,14 +1,9 @@
-// ─────────────────────────────────────────────────────────────────────────────
-// HomeScreen Layout Styles
-// Covers the overall screen layout, section wrappers, and section headers.
-// ─────────────────────────────────────────────────────────────────────────────
-
 import { StyleSheet } from 'react-native';
 
-export const homeScreenStyles = StyleSheet.create({
+export const getHomeScreenStyles = (colors) => StyleSheet.create({
   scrollView: {
     flex: 1,
-    backgroundColor: '#f8fffe',
+    backgroundColor: colors.background,
   },
   scrollContent: {
     paddingBottom: 120,
@@ -38,7 +33,7 @@ export const homeScreenStyles = StyleSheet.create({
   sectionTitle: {
     fontSize: 17,
     fontWeight: '700',
-    color: '#0f172a',
+    color: colors.text,
   },
   viewAllButton: {
     flexDirection: 'row',
@@ -48,20 +43,20 @@ export const homeScreenStyles = StyleSheet.create({
   viewAllText: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#06b6d4',
+    color: colors.primary,
   },
 
-  // ── Create Expense / Split Bill button at bottom of Expenses section ───────
+  // ── Create Expense / Split Bill button ─────────────────────────────────────
   splitBillButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#06b6d4',
+    backgroundColor: colors.primary,
     borderRadius: 12,
     paddingVertical: 13,
     marginTop: 4,
     gap: 8,
-    shadowColor: '#06b6d4',
+    shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.25,
     shadowRadius: 8,
@@ -74,7 +69,7 @@ export const homeScreenStyles = StyleSheet.create({
   },
   // Skeleton loading styles
   skeletonCard: {
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
     borderRadius: 16,
     padding: 16,
     shadowColor: '#0f172a',
@@ -83,7 +78,7 @@ export const homeScreenStyles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 2,
     borderWidth: 1,
-    borderColor: '#f1f5f9',
+    borderColor: colors.cardBorder,
   },
   skeletonRow: {
     flexDirection: 'row',
@@ -95,24 +90,24 @@ export const homeScreenStyles = StyleSheet.create({
     width: 3,
     height: 16,
     borderRadius: 2,
-    backgroundColor: '#e2e8f0',
+    backgroundColor: colors.skeleton,
   },
   skeletonTitle: {
     flex: 1,
     height: 18,
     borderRadius: 6,
-    backgroundColor: '#e2e8f0',
+    backgroundColor: colors.skeleton,
   },
   skeletonBadge: {
     width: 60,
     height: 18,
     borderRadius: 6,
-    backgroundColor: '#e2e8f0',
+    backgroundColor: colors.skeleton,
   },
   skeletonBalance: {
     height: 52,
     borderRadius: 8,
-    backgroundColor: '#f1f5f9',
+    backgroundColor: colors.surfaceAlt,
     marginBottom: 16,
   },
   skeletonActions: {
@@ -123,7 +118,7 @@ export const homeScreenStyles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: '#e2e8f0',
+    backgroundColor: colors.skeleton,
   },
 
   // Empty State
@@ -131,16 +126,16 @@ export const homeScreenStyles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 32,
     paddingHorizontal: 20,
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#f1f5f9',
+    borderColor: colors.cardBorder,
   },
   emptyFavoritesIcon: {
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: '#f1f5f9',
+    backgroundColor: colors.surfaceAlt,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 12,
@@ -148,18 +143,18 @@ export const homeScreenStyles = StyleSheet.create({
   emptyFavoritesTitle: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#0f172a',
+    color: colors.text,
     marginBottom: 4,
   },
   emptyFavoritesSubtitle: {
     fontSize: 13,
-    color: '#64748b',
+    color: colors.textSecondary,
     textAlign: 'center',
     lineHeight: 18,
     marginBottom: 16,
   },
   browseGroupsButton: {
-    backgroundColor: '#06b6d4',
+    backgroundColor: colors.primary,
     paddingHorizontal: 20,
     paddingVertical: 8,
     borderRadius: 8,
@@ -168,5 +163,15 @@ export const homeScreenStyles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: '#ffffff',
+  },
+
+  // recentCard used by SkeletonRow in HomeScreen
+  recentCard: {
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
   },
 });
