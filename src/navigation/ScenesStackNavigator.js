@@ -1,8 +1,8 @@
 import React from 'react';
 import { createStackNavigator } from '@react-navigation/stack';
-import ScenesScreen from '../screens/ScenesScreen';
-import SceneDetailScreen from '../screens/SceneDetailScreen';
-import CreateSceneScreen from '../screens/CreateSceneScreen';
+import ScenesScreen from '../screens/scenes/ScenesScreen';
+import SceneDetailScreen from '../screens/scenes/SceneDetailScreen';
+import CreateSceneScreen from '../screens/scenes/CreateSceneScreen';
 
 const Stack = createStackNavigator();
 

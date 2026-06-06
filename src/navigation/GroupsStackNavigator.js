@@ -1,13 +1,13 @@
 import React from 'react';
 import { createStackNavigator } from '@react-navigation/stack';
 
-import GroupsScreen from '../screens/GroupsScreen';
-import CreateGroupScreen from '../screens/CreateGroupScreen';
-import TransactionsScreen from '../screens/TransactionsScreen';
-import DepositsScreen from '../screens/DepositsScreen';
-import CreateDepositScreen from '../screens/CreateDepositScreen';
-import ReceiptViewScreen from '../screens/ReceiptViewScreen';
-import ManageGroupScreen from '../screens/ManageGroupScreen';
+import GroupsScreen from '../screens/groups/GroupsScreen';
+import CreateGroupScreen from '../screens/groups/CreateGroupScreen';
+import TransactionsScreen from '../screens/groups/TransactionsScreen';
+import DepositsScreen from '../screens/groups/DepositsScreen';
+import CreateDepositScreen from '../screens/groups/CreateDepositScreen';
+import ReceiptViewScreen from '../screens/groups/ReceiptViewScreen';
+import ManageGroupScreen from '../screens/groups/ManageGroupScreen';
 
 const Stack = createStackNavigator();
 
